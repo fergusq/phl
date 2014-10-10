@@ -1,0 +1,843 @@
+VERSIO 1.2.7 == Uutta:
+
+	- Pointer-tyypin voi lyhentää @Tyyppi*
+	- Listan voi luoda syntaksilla {a, ...}; tyyppi voi olla joko @List<@T> tai @Pointer<@T>
+	- Metodin voi määritellä rajapinnan ulkopuolella, jolloin sen nimi on @Rajapinta.metodi; hyödyllinen jos rajapinnan määrittely ja toteutukset pidetään erossa toisistaan
+	- Metodien tyyppiparametrit
+	- kääntäminen ilman std-kirjastoa --nostd
+
+	PROCEED HIGH LANGUAGE (PHL)
+	VERSIO 1.2.6
+
+ JOHDANTO
+
+	Proceed High Language on yleiskäyttöinen proseduaalinen ja oliopohjainen ohjelmointikieli.
+	Kielen alkuperäinen versio ei sisältänyt muuttujia, tyyppijärjestelmää, rajapintoja, rakenteita, luokkia
+	tai moduuleja.
+
+	Kielen kääntäjä kääntää ohjelmat Proceed Intermediate Language (PIL) -koodiksi. Tällä hetkellä PIL:iä voi
+	kääntää x86- ja amd64-assemblyksi ja C-koodiksi.
+
+	Kieli on suunniteltu yksinkertaiseksi ja helposti opittavaksi. Erityisesti muistinhallintaan ja
+	laitteiston hallintaan liittyviä ominaisuuksia on karsittu.
+
+	/* todo */
+
+ MÄÄRITYS
+
+  1. Yleistä syntaksista
+
+	1. Nimet
+
+		Avainsanat:
+			alias     auto    break   castable  catch     class
+			data      do      else    expect    extern    field
+			for       if      import  manual    new       nonlocal
+			operator  PIL     static  super     template  this
+			throw     throws  try     var       while     __special_varargs
+
+		Muut varatut sanat:
+			doc    false    null    true    void
+
+		Nimet saavat alkaa vain merkeillä
+			a-z A-Z ö å ö ß ü _
+
+		Nimet eivät saa sisältää operaattoreita.
+
+	2. Operaattorit
+
+		;  <  >  (  )  ,  :  +  -  *  /  %  =  &  |  {  }  !  [  ]  $  @  #  .  ?  ~  ^
+		== != <= >= :: .. << >> := :- ?= ~= <| |>
+
+  2. Funktiot
+
+	Syntaksi
+	template <@Tyyppiparametri> @Tyyppi nimi(@Tyyppi parametri, @Tyyppi parametri2, ...) throws ex [
+		// koodi
+	]
+	tai
+	<@Tyyppiparametri> @Tyyppi nimi(@Tyyppi parametri, @Tyyppi parametri2, ...) throws ex alias toinenNimi;
+	tai
+	@Tyyppi nimi(@Tyyppi parametri, @Tyyppi parametri2, ...) throws ex abstract;
+	tai
+	@Tyyppi nimi(@Tyyppi parametri, @Tyyppi parametri2, ...) throws ex extern;
+
+	Ennen funktion nimeä tulee palautettavan arvon tyyppi ja mahdolliset tyyppiparametrit.
+	Palautusarvon tai parametrien tyyppejä ei ole pakko laittaa, ja niiden oletusarvo on
+	@Any. Valinnainen throws ex kertoo, että funktio voi heittää virheen.
+	Mikäli valinnainen alias määritellään, kutsutaan funktion sijasta aliasta. Aliaksella täytyy olla
+	sama määrä parametreja (ja this mikäli kyseessä on metodi).
+	
+	"abstract" on sama kuin tyhjä vartalo. "extern" merkitsee funktion ulkoiseksi ja linkattavaksi.
+	
+	Valinnainen "template" kertoo, että funktio rakennetaan joka tyyppiparametriyhdistelmälle erikseen.
+	
+	Jos nimi alkaa sanalla "operator" on seuraava sana operaattori. esim. operator+
+	
+	Jos nimi ei ole operaattori ja loppuu merkkiin "=", tulee metodia kutsua asettajasyntaksilla (ks. 10.3.3.2)
+	
+	1. Attribuutit
+	
+		Ennen funktion esittelyä voidaan määritellä joukko attribuutteja.
+	
+		Syntaksi
+		#nimi(tieto)
+		
+		Määrittelee attribuutin nimi. Jos sulut lisätään, on tietokin lisättävä ("#attr()" ei mahdollinen).
+		Atribuuttien toiminta riippuu kääntäjästä. Katso käyttämäsi kääntäjän ohjeista tietoa atribuuteista.
+		
+		Kääntäjän tulee taata seuraavat asiat:
+		* Kaikki atribuutit voidaan ottaa pois vaikuttamatta ohjelman toimintaan.
+		* Atribuuttien käsittelemisen voi ottaa pois kääntäjän asetuksista.
+
+  3. Lauseet
+
+        Lauseet ovat funktion sisällä olevia komentoja, joita sanotaan joskus myös lausekkeiksi.
+	PHL:ssä lause voi olla joko:
+
+		a) Ehto (if)
+		b) Silmukka (while)
+		c) Silmukasta poistuminen (break)
+		d) Virheenkäsittely (try)
+		e) Virheen heitto (throw)
+		f) Muuttujan arvon asetus
+		g) Ei-paikallinen muuttuja (nonlocal)
+		h) Lohko
+		i) Funktion arvon palauttaminen (return)
+		j) Arvo
+
+	1. Ehdot
+
+		Syntaksi
+		if (ehto) lause else lause
+
+		Ehto on @Boolean-tyyppinen arvo.
+
+		Jos ehto on tosi, suoritetaan ensimmäinen lause, jos taas se on epätosi, suoritetaan else-lause
+
+	2. Silmukat
+
+		Syntaksi
+		while (ehto) lause
+		tai
+		do lause while (ehto);
+
+		Ehdon pitää olla, kuten if-lausekkeessa, @Boolean-tyyppinen. Lausetta suoritetaan niin kauan kuin ehto on tosi.
+		Jos ehto on lauseen jälkeen, lause suoritetaan ensin ja ehto tarkistetaan sen jälkeen.
+		
+		While-silmukan lisäksi PHL tukee For-silmukoita:
+		
+		Syntaksi
+		for (lause; ehto; lause2) lause3
+		
+		Lauseet 1 ja 2 eivät tarvitse puolipistettä loppuunsa. Tosin lauseen 1 lopussa on puolipiste
+		aina johtuen for-silmukan syntaksista.
+		For-silmukka on syntaktinen sokeri muodolle
+		
+		lause while (ehto) { lause3 lause2 }
+		
+	3. Silmukasta poistuminen
+	
+		Syntaksi
+		break;
+		
+		Poistuu nykyisestä silmukasta.
+		
+	4. Virheenkäsittely
+
+		Syntaksi
+		try lause catch(muuttuja) lause
+
+		Mikäli lauseessa oleva throws ex -merkitty funktio (kutsu) heittää virheen, virhe laitetaan muuttuja-muuttujaan (tyyppiä
+		@Exception) ja catch-osion lause suoritetaan.
+		
+		esim.
+			try doSomething();
+			catch (ex) {
+				err_println("error!");
+			}
+		
+	5. Virheen heitto
+
+		Syntaksi
+		throw arvo;
+
+		Arvon täytyy olla tyyppiä @Exception. Virhe heitetään, eli funktiosta hypätään try-catch-osioon, joka nappaa virheen.
+
+	6. Muuttujan arvon asetus
+
+		Syntaksi
+		@Tyyppi muuttuja = arvo;
+		tai
+		var muuttuja = arvo;
+		tai
+		muuttuja = arvo;
+
+		Arvon täytyy olla samaa tyyppiä kuin muuttuja. Mikäli muuttujan arvo asetetaan ensimmäisen kerran, sanotaan asetusta esittelyksi.
+		Esittelyssä arvolle annetaan tietotyyppi. Esittelyitä voi olla vain 1 per muuttuja. Mikäli esittelyssä tietotyypin sijalla on
+		avainsana "var", muuttujan tyypiksi laitetaan arvon tyyppi.
+		
+		esim.
+			@String str = null;
+			var str2 = "a string value";
+			
+			str = "This is";
+			
+			var str3 = str + " " + str2;
+		
+		Mikäli muuttuja on ei-paikallinen (eikä muuttujaa ole määritelty nonlocal-lauseessa), on kyseessä viittauksen
+		muokkaaminen. Jos muuttuja on tuhottu (muuttujan lohkosta on poistuttu), toiminta on määrittelemätön.
+
+	7. Ei-paikalliset muuttujat
+	
+		Syntaksi
+		nonlocal a, b...;
+		
+		Nonlocal-avainsanan jälkeen tulee lista muuttujista pilkulla eroteltuina. Muuttujat ovat ei-paikallisia, eli
+		nimettömän funktion määrittelyn tasolla olevia muuttujia.
+		
+		esim.
+			var i = 2;
+			var c = #()->@Void [
+				nonlocal i;
+				printi(i); doc tulostaa 2;
+			];
+		
+		Näin määritellyt muuttujat eivät ole viittauksia, ja niiden muuttaminen ei muuta alkuperäisen muuttujan arvoa.
+		
+		Ei paikallisiin muuttujiin voi viitata myös $ -syntaksilla (ks. 10.2.1)
+			
+
+	8. Lohkot
+
+		Syntaksi
+		{ lauseet }
+
+		Lauseet on lista lausekkeista, jotka suoritetaan järjestyksessä.
+
+	9. Arvon palautus
+
+		Syntaksi
+		return arvo;
+
+		Funktion arvon palauttaminen ja funktiosta poistuminen.
+
+	10. Arvot
+
+		Arvolauseen syntaksi:
+
+		Syntaksi
+		arvo;
+		
+		Arvo voidaan ympäröidä suluilla laskujärjestyksen muuttamiseksi. Ympäröiminen useilla suluilla on sallittu.
+
+		Arvo voi olla joko:
+
+			a) Vakio
+			b) Muuttuja
+			c) Funktiokutsu
+			d) Nimetön funktio
+			e) Tyyppimuunnos
+			f) Rakenteen alustaminen
+
+		1. Vakiot
+
+			1. Luvut
+
+				Syntaksi
+				luku
+
+				Luku on positiivinen kokonaisluku. Palautettu tyyppi on @Integer.
+
+			2. Merkkijono
+
+				Syntaksi
+				"merkit"
+
+				Merkkijono voi jatkua useille riveille, ja tällöin rivinvaihdot ovat osa merkkijonoa.
+				Palautettu tyyppi on @String.
+
+			3. Totuusarvo
+
+				Syntaksi
+				true
+				tai
+				false
+
+				True (1) tai False (0). Totuusarvon tyyppi on @Boolean.
+
+			4. Void
+
+				Syntaksi
+				void
+
+				Void on @Void-tietotyypin ainoa sallittu arvo. Ei voi muuntaa miksikään muuksi
+				tietotyypiksi.
+
+			5. Null
+
+				Syntaksi
+				null
+
+				Null tarkoittaa samaa kuin 0. Null muuntuu automaattisesti muiksi tietotyypeiksi (paitsi @Void).
+				Null:in tietotyyppi on @Null.
+
+		2. Muuttujat
+
+			Syntaksi
+			muuttuja
+
+			Muuttuja on aiemmin esitelty muuttuja. Jos muuttujan on ei-paikallinen,
+			arvo on viittaus muuttujan oikeaan arvoon. Jos ei-paikallinen muuttuja on tuhottu (lohkosta on
+			poistuttu), toiminta on määrittelemätön. Palautettu typpi on muuttujan tyyppi.
+
+			1. Ei-paikalliset muuttujat
+			
+				Syntaksi
+				$muuttuja
+			
+				Ei-paikallisen muuttujan tallennettu arvo (ei viittaus). Palautettu
+				tyyppi on muuttujan tyyppi.
+				
+			2. Viittaukset funktioihin
+			
+				Syntaksi
+				funktio
+				tai
+				funktio~<@Tyyppiargumentit>
+				
+				Palauttaa viittauksen funktioon. Palautettu arvo on tyyppiä @Function<@R, @P...>
+				
+			3. Viittaukset metodeihin
+			
+				Syntaksi
+				@Tyyppi.metodi
+				
+				Palauttaa viittaukset metodiin. Palautettu arvo on tyyppiä @Function<@R, @Tyyppi, @P...>
+
+		3. Funktiokutsut
+			
+			Funktioiden argumentit ovat aina pelkkiä kopioita arvoista, eivät viittauksia.
+			
+			1. Vakiokutsut
+
+				Syntaksi
+				funktio(argumentit)
+
+				Funktio on nimetty funktio. Argumentit on lista argumentteja eroteltuina pilkuilla. Argumenttien tyypit tarkistetaan. Palautettu tyypi on
+				funktion palautusarvon tyyppi.
+				
+				Jos funktio on metodin nimi, sitä käsitellään kuin sitä olisi kutsuttu this-muuttujan kautta "this.funktio(argumentit)".
+
+			2. Muuttujakutsut
+
+				Syntaksi
+				arvo.(argumentit)
+				tai
+				arvo(argumentit)
+
+				Arvo voi olla mikätahansa arvo, joka palauttaa tyypin @Function<@R, @P...> tai @Closure<@R, @P...>. @R on palautusarvon tyyppi ja @P lista parametrien tyypeistä.
+				Argumentit on lista argumentteja eroteltuina pilkuilla.
+				
+				Funktioita voi kutsua myös seuraavalla vanhentuneella syntaksilla:
+				
+				Syntaksi
+				$(arvo argumentit)
+				
+				Argumentit on lista argumenteista, joita ei ole erotettu millään toisistaan.
+
+			3. Metodikutsut
+
+				1. Normaalit metodit
+
+					Syntaksi
+					arvo.metodi(argumentit)
+
+					Arvo on on muuttuja tai muu arvo, jonka palautettu tyyppi on rajapintatyyppi. Metodi on kyseisen rajapintatyyppin metodi.
+					Argumentit on lista argumentteja eroteltuina pilkuilla.
+
+					Koska joudutaan usein kutsumaan metodeita, joille ei anneta mitään argumenttia, on kieleen lisätty erillinen metodikutsumuoto.
+
+					Syntaksi
+					arvo::metodi
+
+					Tämä on puhdas syntaktinen sokeri muodolle arvo.metodi().
+					
+					Metodikutsujen vanhentunut syntaksi (ns. muuttujatyyli):
+					
+					Syntaksi
+					$(arvo:metodi argumentit)
+					
+					Argumentit on lista argumenteista, joita ei ole erotettu millään toisistaan.
+				
+				2. Asettajametodit
+					
+					Syntaksi
+					arvo::metodi = argumentti
+					tai
+					arvo.metodi(argumentit) = argumentti
+					
+					Asettajametodin nimen perässä oleva =-merkki on osa syntaksia.
+					Asettajametodeja ei voi kutsua muilla tavoilla.
+					
+					Jos metodilla on enemmän kuin yksi argumentti, on yhtäsuuruusmerkin takana
+					oleva argumentti funktion viimeinen argumentti.
+					
+				3. Operaattorit
+				
+					Syntaksi
+					arvo operaattori arvo2
+					
+					Operaattorit laskujärjestyksessä:
+					[] []=
+					**
+					*  /  %
+					+  -
+					..
+					<< >>
+					&
+					^
+					|
+					<  >  <= >=
+					== !=
+					and &&
+					or ||
+					-> =>
+					/[a-zäöå][a-zA-ZÄÖÅäöå0-9_]*/
+					:= :- ?= ~=
+					|> <|
+					/[A-ZÄÖÅ_][a-zA-ZÄÖÅäöå0-9_]*/
+					
+					esim. "2+2" tarkoittaa samaa kuin "2.operator+(2)"
+					esim. "2*2+1+2*2" -> "2.operator*(2).operator+(1).operator+(2.operator*(2))"
+					
+					Ohjelmoijan määrittelemiä ei-sisäänrakennettuja operaattoreita kuvataan
+					taulukossa säännöllisillä lausekkeilla.
+					
+					Operaattorit [] ja []= toimivat erikoissyntaksilla.
+					
+					Syntaksi
+					arvo [ arvo2 ]
+					ja
+					arvo [ arvo2 ] = arvo3
+					
+					[]= on ainoa operaattori, joka voi ottaa 2 argumenttia.
+					
+					Sulkuja ( ) voidaan käyttää laskujärjestyksen muuttamiseen.
+
+		4. Nimetön funktio
+
+			Syntaksi
+			#(parametrit)->@Palautustyyppi[koodi]
+
+			Nimetön funktio on funktio, joka on upotettu koodin sekaan. Nimettömän funktion palatettu tyyppi luetaan kontekstista, ns. odotetusta tyypistä.
+			Esimerkiksi lauseessa "@Closute<@Integer> i = [koodi];" odotettu tyyppi on @Integer. Palautustyypin voi myös erikseen määritellä "->@R" rakenteella.
+			Parametrit on lista parametreista pilkulla eroteltuina. Parametreille voi halutessaan määritellä tyypin, ja oletustyyppi on @Any. Attribuutit
+			voi määritellä palautustyypin jälkeen.
+			Mikäli funktiolla ei ole parametreja voidaan funktio kirjoitaa tiiviinpään muotoon #[koodi] tai vain [koodi].
+
+			Palautettu tyyppi on @Closure<@R, @P...> missä @R on palautusarvon tyyppi ja @P lista parametrien tyypeistä.
+			
+			1. Self-muuttuja
+			
+				Syntaksi
+				self
+				
+				Nimettömän funktion sisällä self-muuttuja viittaa nimettömään funktioon itseensä.
+
+		5. Tyyppimuunnos
+
+			Syntaksi
+			@Tyyppi arvo
+
+			arvon palautettu tyyppi muunnetaan, mikäli mahdollista, tyypiksi @Tyyppi.
+
+		6. Rakenteen alustaminen
+
+			Syntaksi
+			new @Tyyppi
+
+			Kutsuu funktiota alloc(@Integer) ja luo uuden viittauksen @Tyypin olioon.
+			Jos @Tyypillä on konstruktorifunktio new, tätä kutsutaan. Jos @Tyyppi on
+			luokka (ei rakenne), kutsutaan yliluokan (superluokan) ja yliluokkien
+			yliluokkien kaikkia new-metodeja.
+
+  4. Rajapinnat, rakenteet ja luokat
+
+	1. Rajapinnat
+
+		Rajapinnat, tai rajapintatyypit, ovat ennalta määriteltyjä joukkoja funktioita, metodeja. Rajapintoja ei pidä sekoittaa protokolliin,
+		joita joissain kielissä kutsutaan rajapinnoiksi. PHL:n rajapinnoilla ei ole mitään tekemistä protokollien kanssa.
+		
+		Rajapinnat on tarkoitettu auttamaan sellaisten tyyppien, joita ei ole ohjelmoitu PHL:llä, käyttämistä PHL-ohjelmissa.
+		Esimerkki: Rajapinta @Tiedosto, jolla on metodit kirjoita, lue, yms, ja metodit kutsuvat vastaavia C-funktioita fprintf, fscanf, jne.
+
+		Syntaksi
+		interface @Nimi<@Tyyppiparametri> data castable @Tyyppi { metodit };
+
+		Valinnainen castable -avainsana kertoo, että tyyppimuunnokset @Tyyppi <-> @Nimi ovat turvallisia. data [castable] @Tyyppi -osio on valinnainen.
+		Metodit ovat syntaksiltaan identtisiä funktioiden kanssa. @Tyyppi on ns. datatyyppi. Kaikki
+		@Nimi-tyyppiset muuttujat ovat oikeasti @Tyyppi-tyyppisiä muuttujia, joiden kautta voidaan vain kutsua @Nimi-tyypin metodeja. Tyyppiargumentit ovat kuten funktioissa,
+		mutta vaikuttavat kaikkiin rajapinnan metodeihin.
+
+		Ei pidä ajatella, että @Nimi olisi periytetty @Tyypistä, pitemminkin @Nimellä on vain yksi kenttä, joka on tyyppiä @Tyyppi.
+
+		1. this
+			Jokainen metodi voi lukea this-muuttujaa ja kutsua sen metodeja. This-muuttuja sisältää olion, jota käytettiin metodin kutsumiseen.
+
+	2. Rakenteet
+		
+		Rakenne määrittelee tavan, jolla tietoa säilötään muistiin. Rakennemuuttuja on viittaus muistiin.
+		
+		Rakenteilla on rajapinta, eli joukko metodeja, ja kenttiä, joihin voi säilöä tietoa. Kenttien tietoja voi 
+		muokata antaja- ja asettajametodien välityksellä.
+
+		Syntaksi
+		struct @Nimi<@Tyyppiparametri> : @Tyyppi { kentät ja metodit };
+
+		Rakenteiden kentät ja metodit voidaan periyttää jostain muusta rakenteesta. Metodit eivät ole virtuaalisia. Oletuksena rakenteet periytetään tyypistä on @Object.
+
+		1. Kentät
+
+			Syntaksi
+			field @Tyyppi nimi { get:antaja, set:asettaja };
+
+			Antaja-funktio on tyyppiä @Tyyppi get []. Asettaja on tyyppiä @Void set(@Tyyppi value) [].
+			Kentän nimellä ei ole merkitystä.
+			
+			Antajan ja asettajan nimien kirjoitus on valinnaista. esim. "field @Tyyppi nimi { get:, set: };"
+			Jos antajan nimeä ei anneta, se on sama kuin kentän nimi.
+			Jos asettajan nimeä ei anneta, se on kentän nimi=. (ks. 10.3.3.2 ja funktiot).
+			
+			Jos ei antajan eikä asettajan nimeä anneta, määrittely voidaan lyhentää muotoon "field @Tyyppi nimi;".
+			
+			2. Atribuutit
+			
+				Kentän antaja- ja asettajametodeille voi antaa atribuutteja kuten muillekin metodeille.
+				Atribuutit sijoitetaan kaksoispisteen ja nimen väliin, esim "get: #attr antaja"
+
+		2. super
+			Super vastaa this-muuttujaa, mutta sisältää viittauksen yliluokkaan (super class).
+			
+		3. Tyyppimuunnosmetodit
+		
+			Rakenteella (tai luokalla) voi olla tyyppimuunnosmetodeja. Metodit muuntavat luokan tai rakenteen automaattisesti tai manuaalisesti toiseen tietotyyppiin.
+			
+			Syntaksi
+			auto @Tyyppi [ koodi ]
+			tai
+			manual @Tyyppi [ koodi ]
+			
+			Auto muuntaa tyypin automaattisesti. (@Tyyppi b = a)
+			Manual muuntaa tyypin tyyppimuunnoksen yhteydessä. (@Tyyppi b = @Tyyppi a)
+
+	3. Luokat
+
+		Luokat ovat rakenteita, joiden metodit ovat virtuaalisia. Ainoastaan metodi "new" ei ole koskaan virtuaalinen.
+
+		Syntaksi
+		class @Nimi<@Tyyppiparametri> : @Tyyppi { kentät ja metodit };
+
+		Virtuaalisten metodien kutsuminen on hidasta, joten on suositeltavaa käyttää rakenteita luokkien sijasta jos vain mahdollista.
+
+  5. Tyyppiparametrit
+	
+	Tyyppiparametrit ovat kuin C++:n templateja tai Javan genericsejä. Tyyppiparametrisoituja funktioita voi kutsua syntaksilla (nimi~<tyyppiargumentit> argumentit) samaan
+	tapaan kuin muuttujakutsuja. Tyyppiparametrisoituja rajapintatyyppejä voidaan käyttää syntaksilla @Nimi<tyyppiargumentit>. Kääntäjä osaa useimmissa
+	tilanteissa arvata tyyppiargumentit.
+
+	Jos tyyppiparametrisoitu funktio on merkitty avainsanalla "template", funktiosta luodaan kopio jokaista mahdollista tyyppiargumenttiyhdistelmää varten. Tämä vastaa C++:n
+	templateiden toimintaa.
+
+	Esimerkki.
+
+		Standardikirjaston funktio box tekee listan, joka sisältää argumenttija annetun arvon.
+
+		<@T> @List<@T> box(@T obj) [
+			return @List<@T> list(obj);
+		]
+
+		Jos nyt kutsumme box:ia tyyppiargumentilla @Integer:
+
+		@Integer i = box~<@Integer>(3);
+
+		Funktio palauttaa tyypin @List<@Integer>. On kuin kaikki @T:t olisi korvattu @Integer:llä.
+
+  6. Moduulit, odotetut funktiot, ulkoiset funktiot, stattiset muuttujat ja PIL -koodisarjat.
+
+	1. Moduulit
+
+		PHL -projektit voidaan jakaa moduuleihin. Jokainen moduuli on omassa tiedostossaan.
+		Moduuleja voidaan laittaa paketteihin, kansioihin. Jokaisen moduulin on oltava
+		pakettia vastaavassa hakemistossa.
+
+		Tiedoston moduuli määritellään syntaksilla
+		module paketti::moduuli;
+
+		Paketteja voi myös laittaa sisäkkäin, esimekiksi paketti1::paketti2::paketti3::moduuli.
+
+		Moduuleja voi pyytää liitettäviksi toiseen moduuliin syntaksilla
+		import module;
+
+		Esimerkki
+
+			Moduuli Utilities::Collections::Stack:
+
+				module Utilities::Collections::Stack;
+				import Utilities::Collections::Base;
+
+				@CollectableObject pop [ koodia ]
+				@Void push(@CollectableObject) [ koodia ]
+
+			Moduulin tiedoston nimen on oltava Stack.phl ja polku Utilities/Collections/.
+
+		Jos moduulissa on funktio module.onload, se suoritetaan ohjelman alussa.
+
+			Syntaksi
+			module.onload [ koodia ]
+		
+
+	2. Odotetut ja ulkoiset funktiot
+
+		PHL-ohjelmaan voidaan linkittää funktioita muista ohjelmista ja kirjastoista. Mikäli tiedät funktion täsmällisen nimen voit pyytää sitä
+		linkitettäväksi automaattisesti merkitsemällä sen ulkoiseksi.
+
+		Ulkoiset funktiot
+
+			Syntaksi
+			extern nimi;
+
+			Nimi-funktio merkataan automaattisesti linkitettäväksi.
+
+		Linkitetyt funktiot ovat tyyppiä @ExternalFunction, ja niiden palautusarvon tyyppi ja parametrien tyypit ovat tuntemattomia.
+
+		Mikäli funktio halutaan linkittää manuaalisesti, se voidaan merkitä odotetuksi (ts. olemassaolevaksi, mutta linkittämättömäksi).
+		Odotetuille funktioille voidaan merkitä tyyppi.
+
+		Odotetut funktiot
+
+			Syntaksi
+			expect @Funktiotyyppi nimi;
+
+			Nimi-funktio merkitään odotetuksi. Funktiotyyppi voi olla joko @Function<@R, @P...> tai @ExternalFunction.
+
+		Mikäli funktio halutaan sekä linkittää, että tyypittää, se voidaan merkitä sekä ulkoiseksi että odotetuksi.
+
+		Syntaksi
+		extern nimi;
+		expect @Funktiotyyppi nimi;
+		
+		PHL-funktion voi linkittää merkitsemällä se extern-avainsanalla
+		
+		Syntaksi
+		@Palautustyyppi nimi(@Tyyppi argumentti) extern;
+	
+	3. Staattiset muuttujat
+		
+		Staattiset muuttujat ovat koko-ohjelman käytettävissä olevia muuttujia, ja ne säilyvät käytettävissä koko suorituksen ajan,
+		verrattuna funktioiden sisällä oleviin dynaamisiin muuttujiin, jotka ovat käytettävissä vain oman lohkonsa sisällä ja
+		säilyvät hengissä vain lohkon ajan.
+		
+		Syntaksi
+		static @Tyyppi nimi;
+		
+		Muuttuja toimii kuten kaikki muutkin muuttujat.
+	
+	4. PIL-komentosarjat
+
+		PHL-kieli käännetään Proceed Intermediate Language (PIL) -kieleksi, joka taas käännetään assemblyksi. On mahdollista sisällyttää
+		PIL-funktioita PHL-koodin sisään.
+
+		Syntaksi
+		PIL "pil-koodi";
+
+		PIL-koodin tulee olla lainausmerkkien sisällä.
+
+		Tässä tekstissä emme käsittele PIL-koodia.
+
+  7. Kommentit
+
+	Syntaksi
+	doc kommentti;
+
+	Kommentteja voi esiintyä korkealla tasolla ja lausekeiden tilalla, mutta ei rakenteiden sisällä.
+
+  8. Tietotyypit
+
+	1. Sisäänrakennetut tietotyypit
+
+		1. @Void
+
+			@Voidia ei voi muuntaa muiksi tietotyypeiksi, mitään muuta tyyppiä ei voi muuntaa @Voidiksi,
+			ja @Void voi sisältää vain yhden arvon, void:in.
+			@Void-funktiot yleensä palauttavat voidin, return void;
+
+		2. @Any
+
+			@Voidin vastakohta, kaikki tyypit (paitsi @Void) voidaan muuntaa @Anyksi ilmaan tyyppimuunnosta.
+			Tyyppimuunnoksella @Anyn voi muuntaa miksi tahansa tyypiksi. Yleensä tämän tyypin käyttöä tulisi
+			välttää.
+
+		3. @Integer
+
+			Kokonaisluku.
+
+		4. @Boolean
+
+			Totuusarvo. Voi olla joko true (1) tai false (0).
+
+		5. @String
+
+			Merkkijono tavun kokoisia merkkejä.
+
+		6. @List<@T>
+
+			Matalan tason array. Sisältää listan @T tyyppisiä arvoja. Ensimmäinen arvo (0) on listan koko, ja loput ovat
+			listan arvoja. Yleensä korkean tason listan (kuten @Array<@T>) käyttö on suositeltavaa.
+
+		7. @Function<@R, @P...>
+
+			Funktion osoite (function pointer). Voi kutsua muuttujakutsulla. @R on palautusarvon tyyppi ja loput parametrien tyyppejä.
+			/* Mikäli viimeinen parametrityyppi on "...", funktiolle voi antaa muuttuvan määrän argumentteja. */
+			Ainoa tyyppi @Closuren lisäksi, joka voi ottaa vaihtelevan määrän tyyppiargumentteja.
+			
+		8. @Closure<@R, @P...>
+
+			Sama kuin @Function, mutta vain nimettömille funktioille.
+
+		9. @ExternalFunction
+
+			Funktio, joka ottaa ennalta tuntemattoman määrän argumentteja ja palauttaa tuntemattoman tyypin.
+
+		10. @Method
+
+			Tekninen tyyppi. Tyypin käyttö on kielletty.
+
+		11. @Null
+
+			Ainoa sallittu arvo on null. Muuntuu automaattisesti muiksi tietotyypeiksi.
+			
+		12. @Object
+		
+			Structien oletusylityyppi. Sisältää yleensä tietoa tyypistä riippuen toteutuksesta.
+		
+		13. @Array<@T>
+			
+			Korkean tason array. Yleensä indeksit alkavat nollasta. Lisäämällä tyypin perään [] saa tyypistä array-tyypin.
+			@Integer[] on sama kuin @Array<@Integer>.
+	
+	2. Tyyppimuunnokset
+		
+		Seuraava taulukko esittää mahdollisia tyyppimuunnoksia. Struct merkitsee sekä luokkaa, että rakennetta.
+		
+		Automaattiset tyyppimuunnokset:
+		
+		any           -> @Any
+		@Null         -> any
+		interface     -> data castable
+		data castable -> interface
+		struct        -> super
+		
+		Manuaaliset tyyppimuunnokset:
+		
+		@Any      -> any
+		interface -> data
+		data      -> interface
+		super     -> struct
+		
+		Mahdottomat tyyppimuunnokset:
+		
+		any     -> @Void
+		@Void   -> any
+		any     -> @Method
+		@Method -> any
+		
+
+ HUOMAUTUKSET
+
+  1. Funktio- ja metodikutsut
+
+	PHL:ssä on 2 tyyliä kutsua funktioita, C-tyyli "f(a)", ja Lisp-tyyli "(f a)". On suositeltavaa valita jompi kumpi tyyleistä ja käyttää
+	vain sitä.
+
+	1. C - tyyli
+
+		function(a, b, c);
+		obj.method(a);
+		obj.value();
+		obj.function()(a);
+
+	2. Lisp - tyyli
+
+		$(function a b c);
+		$(obj:method a);
+		obj::value;
+		$(obj::function a);
+
+	Kahden eri tyylin sotkeminen ei ole suositeltavaa.
+
+		$(tree:addNode base::read.int() objs.get(0::neg)::stream.first(3));
+
+	sijaan
+
+		tree.addNode(base.read().int(), objs.get(0.neg()).stream().first(3));
+
+	tai
+
+		$(tree:addNode base::read::int $($(objs:get 0::neg)::stream:first 3));
+
+  2. C-kutsut Lisp-kutsujen sisällä -- Vanhentunut; Lisp-kutsujen eteen on nykyään pantava $
+
+	C-Kutsuja ei voi panna lisp-kutsujen sisään. Seuraava esimerkki kertoo miksi:
+
+	@Integer a(@Any b) [return @Integer b;]
+
+	@Void main [
+		@Integer a = 1;
+		@Function<@Integer> b = [return 0;];
+		a = (+ a (b));
+	]
+
+	On epäselvää, tarkoitaako a (b) funktiota a (argumenttina b) vai muuttujaa a ja funktion b kutsua.
+
+ ESIMERKKEJÄ
+
+  1. Rajapinta @Number -- Vanhentunut; Lisp-kutsuja ei päivitetty
+
+	module com::example::Number;
+
+	import phl::lang::core;
+
+	interface @Number data castable @Integer {
+
+		@Integer int [
+			return @Integer this;
+		]
+
+		@Number add (@Number n) [
+			return (+ this::int n::int);
+		]
+
+		@Number sub (@Number n) [
+			return (- this::int n::int);
+		]
+
+		@Number mul (@Number n) [
+			return (* this::int n::int);
+		]
+
+		@Number div (@Number n) [
+			return (/ this::int n::int);
+		]
+
+		@Number mod (@Number n) [
+			return (% this::int n::int);
+		]
+	};
+
+	@Integer main [
+		@Number i = 2;
+		@Number j = 3;
+		@Number k = (i :add j);
+		return 0;
+	]
