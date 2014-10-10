@@ -1,0 +1,24 @@
+
+import phl::lang::core;
+
+extern printf;
+extern strcat;
+
+@Integer main [
+	@Integer i = 2;
+
+	@List<@Integer> l = (list 0 1 2 3);
+	printf("List: %i %i %i %i %i\n", (get l 0), (get l 1), (get l 2), (get l 3), (get l 4));
+
+	@String s = "Hello World!";
+	printf(strcat(s, "\n"));
+
+	i = 0;
+
+	while ((<i 10)) {
+		i = (+i 1);
+		printf("%i\n", i);
+	}
+
+	return 0;
+]

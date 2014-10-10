@@ -1,0 +1,8 @@
+module stderr;
+
+extern stderr;
+extern fprintf;
+
+main [
+	fprintf(stderr, "%s\n", "This is only an example");
+]

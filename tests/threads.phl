@@ -1,0 +1,25 @@
+module threads;
+
+import phl::lang::threads;
+
+extern printf;
+
+@Integer main [
+	@Closure<@Void> code = [
+		printf("This is an example text.\n");
+	];
+
+	try runInThread(code); catch (ex) printf("Something went wrong.\n");
+	try runInThread(code); catch (ex) printf("Something went wrong.\n");
+
+	@String pid = iif~<@String>(fork().eq(0), "old", "new");
+	@Integer i = 0;
+	while (i < 10)
+		{
+		printf("More example text! %s\t%i\n", pid, i);
+		i=i::inc;
+		}
+
+	return 0;
+]
+

@@ -1,0 +1,10 @@
+module modules;
+
+import test::printer;
+
+@Integer main [
+	TPprint("Hello Modules!");
+	var t = table()["auto"];
+	
+	return 0;
+]

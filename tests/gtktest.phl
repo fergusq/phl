@@ -1,0 +1,76 @@
+module gtktest;
+
+extern g_signal_connect_data;
+extern gtk_widget_show_all;
+extern gtk_container_add;
+extern gtk_container_get_type;
+extern gtk_window_set_title;
+extern gtk_window_get_type;
+
+extern g_type_check_instance_cast;
+
+interface @GObject data @Pointer {
+	@Void signal_connect(@String signal, callback, data_) [
+		g_signal_connect_data(this, signal, callback, data_, 0, 0, 0);
+	]
+};
+
+interface @GtkWidget data castable @GObject {
+	@Void show_all [
+		gtk_widget_show_all(this);
+	]
+	@Void signal_connect(@String signal, callback, data_) alias @GObject.signal_connect;
+};
+
+interface @GtkContainer data castable @GtkWidget {
+	@Void add (@GtkWidget widget) [
+		gtk_container_add(g_type_check_instance_cast(this, gtk_container_get_type()), widget);
+	]
+	@Void show_all alias @GtkWidget.show_all;
+	@Void signal_connect(@String signal, callback, data_) alias @GObject.signal_connect;
+};
+
+interface @GtkWindow data castable @GtkContainer {
+	@Void set_title (@String title) [
+		gtk_window_set_title(g_type_check_instance_cast(this, gtk_window_get_type()), title);
+	]
+	@Void add (@GtkWidget widget) alias @GtkContainer.add;
+	@Void show_all alias @GtkWidget.show_all;
+	@Void signal_connect(@String signal, callback, data_) alias @GObject.signal_connect;
+};
+
+extern gtk_init;
+extern gtk_window_new;
+extern gtk_main_quit;
+extern gtk_label_new;
+extern gtk_main;
+
+interface @Gtk {
+	@Void init(@Pointer<@Integer> argc, @Pointer<@NList> argv) [ gtk_init(argc, argv); ]
+	@Void main [ gtk_main(); ]
+	
+	@GtkWindow window_new [ return @GtkWindow gtk_window_new(0); ]
+	@GtkWidget label_new(@String s) [ return @GtkWidget gtk_label_new(s); ]
+	
+	@ExternalFunction<@Any> main_quit [ return gtk_main_quit; ]
+};
+static @Gtk Gtk;
+
+@Integer main [
+	
+	Gtk.init(null, null);
+	
+	var window = Gtk.window_new();
+	window.set_title("Hello, world!");
+	window.signal_connect("destroy", gtk_main_quit, 0);
+	
+	var label = Gtk.label_new("Hello, world!");
+	
+	window.add(label);
+	
+	window.show_all();
+	
+	Gtk.main();
+	
+	return 0;
+]

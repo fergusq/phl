@@ -1,0 +1,22 @@
+module methodtypeargs;
+
+extern printf;
+
+interface @Inter {
+	<@T, @U> @Void method(@U u, @T t) [
+		printf("%i, %i\n", u, t);
+	]
+	
+	template <@T, @U> @Void method2(@U u, @T t) [
+		printf("%s\n", "" + (u + t));
+	]
+};
+
+@Void main [
+	@Inter i = null;
+	i.method(0, true);
+	i.method(false, 1);
+	i.method2(1, 2);
+	i.method2("hello, ", 123);
+	printf("%s\n", ("h" + 123));
+]

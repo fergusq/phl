@@ -1,0 +1,20 @@
+module wordcount;
+
+import phl::lang::io;
+
+@Void main [
+
+	@String str = readln();
+
+	@Array<@String> words = str.split(' ');
+	
+	@Integer i = 0;
+	while (i < words::size) {
+		printf("%s, ", words.get(i));
+		i = i::inc;
+	}
+	
+	printf("%s\n", (@List words).str());
+	
+	
+]

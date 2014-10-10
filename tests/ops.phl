@@ -1,0 +1,32 @@
+module ops;
+
+import phl::lang::io;
+
+@Integer main [
+	{
+		var i = 3 * 3 + 3 + 3 * 3;
+		StdIO::out << i << "\n";
+	}
+	
+	var i = 0;
+	var a = 0;
+	var b = 1;
+	var c = 0;
+	while (i < 45) {
+		c = a+b;
+		a = b;
+		b = c;
+		
+		StdIO::out << c << "\n";
+		
+		i = i + 1;
+	}
+	
+	var ar = 1..4;
+	
+	printf("%s\n", ar::str);
+	
+	3 times [ printf("HOORAY!\n"); ];
+	
+	return 0;
+]

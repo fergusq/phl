@@ -1,0 +1,70 @@
+module calc;
+
+@Integer main [
+	@Calculator c = 0||1;
+	c.start();
+	return 0;
+]
+
+extern printf;
+extern scanf;
+
+interface @Calculator data castable @Fraction {
+	@Void start [
+		@Integer i = 0;
+		@Integer j = 0;
+		@Integer c = 0;
+		@Pointer<@Integer> k = alloc(4);
+		@Pointer<@Integer> o = alloc(4);
+		@Pointer<@Integer> p = alloc(4);
+		
+		printf("Calculator syntax: \n\ti?n: Do ? operation with an integer n\n\tf?n/n: Do ? operation with a fraction n/n\n");
+		
+		printf("> ");
+		
+		while (true) {
+			scanf("%c", o);
+			c = o.get();
+			
+			if (c == 'q') break;		doc quit;
+			if (c == 'p') this::print;	doc print;
+			else if (c == 'r') {		doc reset;
+				this = 0||1;
+				this::print;
+			}
+			else if (c == 'i') {		doc integer;
+		
+				scanf("%c%i", o, k);
+				c = o.get();
+				i = k.get();
+		
+				if (c == '+') this = (@Fraction this).addi(i);
+				if (c == '-') this = (@Fraction this).subi(i);
+				if (c == '*') this = (@Fraction this).muli(i);
+				if (c == '/') this = (@Fraction this).divi(i);
+				
+				this::print;
+			} else if (c == 'f') {		doc fraction;
+		
+				scanf("%c%i/%i", o, k, p);
+				c = o.get();
+				i = k.get();
+				j = p.get();
+		
+				if (c == '+') this = (@Fraction this) + (i||j);
+				if (c == '-') this = (@Fraction this) - (i||j);
+				if (c == '*') this = (@Fraction this) * (i||j);
+				if (c == '/') this = (@Fraction this) / (i||j);
+				
+				this::print;
+			} else if (c != '\n') printf("Error: Unknown command %c!\n", c);
+			
+			if (c == '\n') printf("> ");
+		}
+	]
+	
+	@Void print [
+		if ((@Fraction this)::n == 1) printf("%i\n", (@Fraction this)::m);
+		else printf("%i/%i\n", (@Fraction this)::m, (@Fraction this)::n);
+	]
+};

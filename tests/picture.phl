@@ -1,0 +1,37 @@
+
+module picture;
+
+import phl::lang::io;
+
+@Integer pow(@Integer a, @Integer b) [
+	@Integer r = a;
+	while (b > 0) {
+		r = r * a;
+		b = b - 1;
+	}
+	return r;
+]
+
+@Integer main [
+	
+	@Integer color = 0;
+	
+	@Integer x = 0;
+	@Integer y = 0;
+	
+	printf("256 256\n");
+	
+	while (x < 256) {
+		y = 0;
+		while (y < 256) {
+			color = (pow(y, x) - (x+y) + (y)/(x+1));
+			printf(" %i", color);
+			y = y + 1;
+		}
+		printf("\n");
+		
+		x = x + 1;
+	}
+	
+	return 0;
+]

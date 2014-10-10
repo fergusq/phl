@@ -1,0 +1,9 @@
+
+import phl::lang::core;
+extern printf;
+
+main [
+	if (true) {
+		printf("Hello World!");
+	}
+]

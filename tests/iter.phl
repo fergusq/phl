@@ -1,0 +1,75 @@
+module iter;
+
+extern printf;
+
+class @Operation<@T> {
+	@Void operator => (@T o) abstract;
+};
+
+class @SimpleRepeatingOperation<@T> : @Operation<@Closure<@Void> > {
+	field @Closure<@Boolean, @T> continue { get:continue, set:set_continue };
+	field @Closure<@T, @T> action { get:action, set:set_action };
+	field @T value { get:value, set:set_value };
+	
+	@SimpleRepeatingOperation<@T> init(@Closure<@Boolean, @T> continue, @Closure<@T, @T> action, @T start) [
+		this.set_continue(continue);
+		this.set_action(action);
+		this.set_value(start);
+		return this;
+	]
+	
+	@Void operator => (@Closure<@Void> closure) [
+		while (this::continue(this::value)) {
+			closure();
+			this.set_value(this::action(this::value));
+		}
+	]
+};
+
+class @RepeatingOperation<@T> : @Operation<@Closure<@Void, @T> > {
+	field @Closure<@Boolean, @T> continue { get:continue, set:set_continue };
+	field @Closure<@T, @T> action { get:action, set:set_action };
+	field @T value { get:value, set:set_value };
+	
+	@RepeatingOperation<@T> init(@Closure<@Boolean, @T> continue, @Closure<@T, @T> action, @T start) [
+		this.set_continue(continue);
+		this.set_action(action);
+		this.set_value(start);
+		return this;
+	]
+	
+	@Void operator => (@Closure<@Void, @T> closure) [
+		while (this::continue(this::value)) {
+			closure(this::value);
+			this.set_value(this::action(this::value));
+		}
+	]
+};
+
+@RepeatingOperation<@Integer> counter(@Integer to) [
+	return new @RepeatingOperation<@Integer>.init(
+		#(i) i < $to,
+		#(i) i + 1,
+		0
+	);
+]
+
+@SimpleRepeatingOperation<@Integer> repeat(@Integer times) [
+	return new @SimpleRepeatingOperation<@Integer>.init(
+		#(i) i < $times,
+		#(i) i + 1,
+		0
+	);
+]
+
+@Integer main [
+	var j = 0;
+	repeat(10) => [
+		counter(10) => #(i) [
+			printf("\t%i", i);
+		];
+		j = j + 2;
+		printf("\n");
+	];
+	printf("%i\n", j);
+]

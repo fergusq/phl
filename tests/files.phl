@@ -1,0 +1,14 @@
+
+module files;
+
+import phl::lang::io;
+
+@Void main [
+	@File file = null;
+	
+	try file = openFile("test.tmp.txt", "w");
+	catch (ex) exit(1);
+	
+	file.printf("%s", "test");
+	file.close();
+]

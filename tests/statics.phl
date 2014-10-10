@@ -1,0 +1,19 @@
+module statics;
+
+extern printf;
+
+static @Integer i;
+
+@Integer main [
+	
+	@Integer a = 2 + 4 * 7;
+	printf("a = %i, i = %i\n", a, i);
+	i = a; a = 0;
+	printf("a = %i, i = %i\n", a, i);
+	
+	var j = ref(i);
+	j := 0;
+	printf("a = %i, i = %i\n", a, i);
+	
+	return 0;
+]

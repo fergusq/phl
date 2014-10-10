@@ -1,0 +1,102 @@
+module attributes;
+
+extern printf;
+extern scanf;
+
+class @Valinta {
+	field @Integer valinta { get: valinta, set: valinta= };
+	
+	@Void valitse (@Integer id) [
+		printf("Tuote %i valittu\n", id);
+		this::valinta = id;
+	]
+};
+
+class @Rahalipas {
+	field @Integer rahaa;
+	
+	@Void otaRahaa (@Integer paljonko) [
+		this::rahaa = this::rahaa + paljonko;
+		printf("Rahaa %i\n", this::rahaa);
+	]
+	
+	@Void palautaRahaa (@Integer paljonko) [
+		printf("Rahaa palautettu %i\n", paljonko);
+		this::rahaa = this::rahaa - paljonko;
+	]
+	
+	@Void talletaRahaa (@Integer paljonko) [
+		this::rahaa = this::rahaa - paljonko;
+	]
+};
+
+class @Jakelija {	
+	@Void jakele (@Integer id) [
+		printf("Jaettu tuote %i\n", id);
+	]
+};
+
+class @Kontrolleri {
+	
+	field @Automaatti a;
+	
+	@Kontrolleri init(@Automaatti a) [
+		this::a = a;
+		return this;
+	]
+	
+	@Void ohjelma [
+		if (this::a::valinta::valinta != 0) {
+			if (this::a::lipas::rahaa >= 170) {
+				this::a::lipas.talletaRahaa(170);
+				this::a::jakelija.jakele(this::a::valinta::valinta);
+			}
+			this::a::lipas.palautaRahaa(this::a::lipas::rahaa);
+			this::a::valinta.valitse(0);
+		}
+	]
+};
+
+class @Automaatti {
+	field @Valinta valinta		{ get:valinta,		set:asetaValinta	};
+	field @Rahalipas lipas		{ get:lipas,		set:asetaRahalipas	};
+	field @Jakelija jakelija	{ get:jakelija,		set:asetaJakelija	};
+	field @Kontrolleri kontrolleri	{ get:kontrolleri,	set:asetaKontrolleri	};
+	
+	new [
+		this.asetaValinta(new @Valinta);
+		this.asetaRahalipas(new @Rahalipas);
+		this.asetaJakelija(new @Jakelija);
+		this.asetaKontrolleri(new @Kontrolleri.init(this));
+	]
+	
+	@Void suorita [
+		printf("> ");
+			
+		while (true) {
+			@Integer komento = 0;
+			@Integer arg = 0;
+			scanf("%c", ref(komento));
+			if (komento == 'a') {
+				scanf("%i", ref(arg));
+				this::lipas.otaRahaa(arg);
+			} else if (komento == 'v') {
+				scanf("%i", ref(arg));
+				this::valinta.valitse(arg);
+			} else if (komento == 'p') {
+				this::lipas.palautaRahaa(this::lipas::rahaa);
+			} else if (komento == 'q') {
+				break;
+			}
+			
+			if (komento != '\n') this::kontrolleri.ohjelma();
+			else printf("> ");
+		}
+	]
+};
+
+@Integer main [
+	@Automaatti a = new @Automaatti;
+	a.suorita();
+	return 0;
+]

@@ -1,0 +1,21 @@
+module referr;
+
+extern printf;
+
+@Pointer<@Integer> refa [
+	var k = 0;
+	printf("%u\n", ref(k));
+	return ref(k);
+]
+
+@Pointer<@Integer> test [
+	var l = 0;
+	printf("%u\n", ref(l));
+	return ref(l);
+]
+
+@Integer main [
+	refa();
+	test();
+	return 0;
+]

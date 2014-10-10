@@ -1,0 +1,28 @@
+
+main [
+	a = 0;
+	b = 0;
+
+	// Closure Proposal Syntax
+
+	closure = #()[
+		// Do something with a and b
+	];
+
+	closure();
+]
+
+// Translated to:
+
+main [
+	a = 0;
+	b = 0;
+
+	closure = {lambda@1, a, b};
+	(closure.0 closure);
+]
+
+lambda@1(@vars) [
+	a = @vars.1;
+	b = @vars.2;
+]

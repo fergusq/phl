@@ -1,0 +1,42 @@
+module methodptr;
+
+import phl::lang::io;
+
+class @A {
+	a [
+		println("In @A.a");
+	]
+	
+	b [
+		println("In @A.b");
+	]
+};
+
+class @B : @A {
+	b [
+		println("In @B.b");
+	]
+};
+
+@Integer main [
+	var a = new @A;
+	a.a();
+	a.b();
+	
+	var b = new @B;
+	b.a();
+	b.b();
+	
+	var aa = @A.a;
+	var ab = @A.b;
+	aa(a);
+	ab(a);
+	aa(b);
+	ab(b);
+	
+	var ba = @B.a;
+	var bb = @B.b;
+	ba(b);
+	bb(b);
+	
+]

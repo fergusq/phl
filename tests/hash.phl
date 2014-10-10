@@ -1,0 +1,25 @@
+module hash;
+
+import phl::lang::collections;
+
+extern printf;
+
+@Integer main [
+	
+	printf("%i\n", hash1("auto"));
+	printf("%i\n", hash1("kaara"));
+	printf("%i\n", hash1("talo"));
+	printf("%i\n", hash1("loota"));
+	printf("%i\n", hash1("lato"));
+	printf("%i %i\n", hash1("almanakka"), hash1(hash1r(hash1("almanakka"))));
+	
+	var synonyymit = new @Hashtable<@String>;
+	synonyymit.set("auto", "kaara");
+	synonyymit.set("kaara", "auto");
+	synonyymit.set("laatikko", "loota");
+	synonyymit.set("loota", "laatikko");
+	
+	printf("%s\n", synonyymit.get("auto"));
+	
+	return 0;
+]

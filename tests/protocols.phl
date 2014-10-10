@@ -1,0 +1,107 @@
+module protocols;
+
+import phl::lang::io;
+
+doc protocol Car;
+
+class @Car {
+	@Void drive() abstract;
+};
+
+doc class Vechile;
+
+class @Vechile {
+	@Void startMotor() [
+		println("Starting motor...");
+	]
+};
+
+doc class SportCar;
+
+class @SportCar : @Vechile {
+
+	field @SportCar_Car _car_protocol {
+		get:get__car_protocol,
+		set:set__car_protocol
+	};
+
+	auto @Car [
+		return this.get__car_protocol();
+	]
+
+	@Void drive [
+		return this.get__car_protocol().drive();
+	]
+	
+	new [
+		this.set__car_protocol(new @SportCar_Car.init(this));
+	]
+};
+
+class @SportCar_Car : @Car {
+
+	field @SportCar _this {
+		get: _this,
+		set: _set_this
+	};
+
+	@SportCar_Car init(@SportCar _this) [
+		this._set_this(_this);
+		return this;
+	]
+
+	@Void drive [
+		println("Driving...");
+	]
+};
+
+
+doc Protocol test 2;
+
+interface @Shouter<@T> data @T {
+	template @Void shout [
+		(@T this).shout();
+	]
+};
+
+template<@T> @Shouter<@T> toshouter(@T obj) [
+	return @Shouter<@T> obj;
+]
+
+class @Human {
+	@Void shout [
+		printf("SHOOOOOUUUUUUUT!\n");
+	]
+};
+
+class @Cow {
+	@Void shout [
+		printf("MOOOOO!\n");
+	]
+};
+
+
+template<@T> shout(@T shouter) [
+	@Shouter<@T> real_shouter = toshouter(shouter);
+	real_shouter.shout();
+]
+
+doc Main-funktio;
+
+@Integer main [
+	@SportCar scar = new @SportCar;
+	
+	scar.startMotor();
+	scar.drive();
+	
+	@Vechile vech = scar;
+	vech.startMotor();
+	
+	@Car car = scar;
+	car.drive();
+	
+	shout(new @Human);
+	shout(new @Cow);
+	
+	return 0;
+]

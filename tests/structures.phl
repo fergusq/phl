@@ -1,0 +1,73 @@
+
+module structures;
+
+extern printf;
+
+struct @A {
+	field @Integer _1 {
+		get: get1,
+		set: set1
+	};
+	field @Integer _2 {
+		get: get2,
+		set: set2
+	};
+};
+
+struct @B : @A {
+	field @Integer _3 {
+		get: get3,
+		set: set3
+	};
+};
+
+struct @C : @B {
+	field @Integer _4 {
+		get: get4,
+		set: set4
+	};
+};
+
+class @Animal {
+	@Void walk [
+		printf("Animal walks\n");
+	]
+
+	@Void talk [
+		printf("Animal talks\n");
+	]
+};
+
+class @FlyingAnimal : @Animal {
+	@Void walk [
+		printf("FlyingAnimal walks\n");
+	]
+
+	@Void fly [
+		printf("FlyingAnimal flies\n");
+	]
+};
+
+@Void main [
+	@A a = new @A;
+	@B b = new @C;
+	@C c = @C b;
+
+	a.set1(2);
+	c.set1(42);
+	printf("%i %i\n", a.get1(), b.get1());
+
+	b.set3(42);
+	printf("%i\n", c.get3());
+
+	@Animal dog = new @Animal;
+	@Animal bat = new @FlyingAnimal;
+
+	dog.talk();
+	dog.walk();
+
+	bat.talk();
+	bat.walk();
+
+	(@FlyingAnimal bat).fly();
+]

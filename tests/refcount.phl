@@ -1,0 +1,97 @@
+module refcount;
+
+extern printf;
+
+class @Olio {
+	field @Integer viittaukset { get: viit, set: sviit };
+	
+	@Void viittaa(@Olio viittaaja) [
+		this.sviit(this::viit+1);
+		printf("[%s %i]: %i viittausta!\n", this::getType, this, this::viit);
+	]
+	
+	@Void alaviittaa(@Olio viittaaja) [
+		this.sviit(this::viit-1);
+		
+		if (this::viit == 0) printf("[%s %i] tuhoutuu!\n", this::getType, this);
+		else printf("[%s %i]: %i viittausta!\n", this::getType, this, this::viit);
+	]
+};
+
+class @Olio1 : @Olio {
+	field @Olio2 o { get: o1, set: so1};
+	field @Olio2 o2 { get: o2, set: so2};
+	
+	new [
+		this.so1(new @Olio2);
+		this.so2(new @Olio2);
+	]
+	
+	@Void viittaa(@Olio viittaaja) [
+		
+		super.viittaa(this);
+		if (this::o1 != viittaaja) this::o1.viittaa(this);
+		if (this::o2 != viittaaja) this::o2.viittaa(this);
+	]
+	
+	@Void alaviittaa(@Olio viittaaja) [
+		
+		if (this::o1 != viittaaja) this::o1.alaviittaa(this);
+		if (this::o2 != viittaaja) this::o2.alaviittaa(this);
+		super.alaviittaa(this);
+	]
+};
+
+class @Olio2 : @Olio {
+
+	field @Olio3 o { get: o1, set: so1};
+
+	new [
+		this.so1(new @Olio3.init(this));
+	]
+
+	@Void viittaa(@Olio viittaaja) [
+		super.viittaa(this);
+		if (this::o1 != viittaaja) this::o1.viittaa(this);
+	]
+	
+	@Void alaviittaa(@Olio viittaaja) [
+		if (this::o1 != viittaaja) this::o1.alaviittaa(this);
+		super.alaviittaa(this);
+	]
+};
+
+class @Olio3 : @Olio {
+	field @Olio2 o { get: o1, set: so1};
+
+	@Olio3 init(@Olio2 o2) [
+		this.so1(o2);
+		return this;
+	]
+
+	@Void viittaa(@Olio viittaaja) [
+		super.viittaa(this);
+		
+		if (this::o1 != viittaaja) this::o1.viittaa(this);
+	]
+	
+	@Void alaviittaa(@Olio viittaaja) [
+		if (this::o1 != viittaaja) this::o1.alaviittaa(this);
+		
+		super.alaviittaa(this);
+	]
+};
+
+@Integer main [
+	@Olio1 o1 = new @Olio1;	printf("o1 = new @Olio1;\n");
+	o1.viittaa(null);
+	
+	var o2 = o1;		printf("o2 = o1;\n");
+	o2.viittaa(null);
+				printf("o1 = null;\n");
+	o1.alaviittaa(null);
+	o1 = null;
+				printf("end_of_program\n");
+	o2.alaviittaa(null);
+	return 0;
+]

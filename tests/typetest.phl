@@ -1,0 +1,18 @@
+module typetest;
+
+extern printf;
+
+@Integer main [
+	@Integer i = (@Function<@Integer>[return 0;]);
+	i = 1;
+	voidFunc(3, [return 0;]);
+
+	@List<@Integer> l = (list 1 2 3);
+	@Integer s = (get l 0);
+	return 0;
+]
+
+@Void voidFunc(@Integer a, @Function<@Integer> b) [
+	@Integer b2 = b();
+	printf("%i, %i\n", a, b2);
+]

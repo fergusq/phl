@@ -1,0 +1,23 @@
+module classes;
+
+import phl::lang::io;
+
+class @Application {
+	@Void onStart [
+		println("Starting application...");
+	]
+};
+
+class @HelloWorld : @Application {
+	@Void onStart [
+		super.onStart();
+		println("Hello World!");
+	]
+};
+
+@Integer main [
+	@HelloWorld hello = new @HelloWorld;
+	hello.onStart();
+
+	return 0;
+]

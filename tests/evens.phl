@@ -1,0 +1,8 @@
+module evens;
+
+extern printf;
+
+@Void main [
+	printf("Evens: %s\n",
+		(1..20).filter( #(i) i % 2 == 0 )::str);
+]

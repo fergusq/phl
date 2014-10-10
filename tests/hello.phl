@@ -1,0 +1,52 @@
+main [
+	test1();
+	test2();
+]
+
+test1 [
+	print(a, +(b, c), -(d, *(e, f)));
+	f(1);
+	f(2);
+	f(f(f()));
+	
+	(set a (+ 2 2));
+	
+	print(
+		((getFive))
+	);
+
+	do10times(#[print("a")]);
+	
+	do(
+		#(t)[
+			for(
+				#[nothing]
+			);
+		]
+	);
+
+	print("Hello World!\n");
+
+	return a(b);
+	
+	c(d);
+]
+
+getFive [
+	return five;
+]
+
+five [
+	return 5;
+]
+
+test2 [
+	a = 1;
+	b = 2;
+	c = (+ a b);
+
+	five = c;
+
+	d = five;
+	five();
+]

@@ -1,0 +1,40 @@
+module manorboy;
+
+extern printf;
+
+/* Sisennysfunktio */
+
+@String sis(@Integer i) [
+	i = (0-(i-10));
+	var a = "";
+	for (var j = 0; j < i; j=j+1) a = a + " ";
+	return a;
+]
+
+/* A */
+
+@Integer A(@Integer k, @Closure<@Integer> x1, @Closure<@Integer> x2, @Closure<@Integer> x3, @Closure<@Integer> x4, @Closure<@Integer> x5)
+[
+	printf("%s%i: a\n", sis(k), k, k);
+	
+	var curr_k = k;
+	
+	/* B */
+	
+	var B = #->@Integer
+	[
+		printf("%s%i: b%i\n", sis(k), k, $curr_k);
+		k = k - 1;
+		return A(k, self, $x1, $x2, $x3, $x4);
+	];
+
+	return @Integer iif(k <= 0, # $x4()+$x5(), # $B())();
+]
+
+/* MAIN */
+
+@Integer main
+[
+	printf("A = %i\n", A(10, # 1, # 0-1, # 0-1, # 1, # 0));
+	return 0;
+]

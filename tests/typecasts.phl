@@ -1,0 +1,30 @@
+module typecasts;
+
+import phl::lang::io;
+
+struct @IntegerRef {
+	field @Integer intValue {
+		get:toInteger,
+		set:setValue
+	};
+	
+	doc 	(manual) 	@Integer obj == obj.manual @Integer()
+		(auto)		obj == obj.auto @Integer()
+	;
+	
+	auto @Integer [
+		return this.toInteger();
+	]
+	
+	@IntegerRef initIntegerRef(@Integer i) [
+		this.setValue(i);
+		return this;
+	]
+};
+
+@Integer main [
+	@IntegerRef i = new @IntegerRef.initIntegerRef(3);
+	i.setValue(i + 3);
+	printf("%i\n", @Integer i); doc i == 6;
+	return 0;
+]

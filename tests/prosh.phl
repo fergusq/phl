@@ -1,0 +1,395 @@
+module prosh;
+
+import phl::lang::io;
+import phl::lang::collections;
+
+extern gets;
+extern isalnum;
+expect @Function<@Boolean, @Integer> isalnum;
+
+/*
+PROSH syntaksi
+
+prog := <stmt> { NEWLN <stmt> } [NEWLN]
+stmt := <cmd> {<cmd>} [ ( "|" | "&" ) <stmt> ] | "{" [NEWLN] <prog> [NEWLN] "}"
+cmd := ["$"] <id> | "(" [NEWLN] <stmt> [NEWLN] ")" | "do" [NEWLN] <prog> [NEWLN] "end"
+*/
+
+@Integer main(@Integer argc, @List<@String> argv) [
+	/*if (argc != 2) {
+		err_println("Wrong number of arguments!\n");
+		return 1;
+	}*/
+
+	/*var code = argv[1];*/
+	
+/*	var code = "
+	set a smt
+	true && echo $a
+	";*/
+	
+	vars = new @Hashtable<@String>;
+	
+	while (true) {
+		var code = @String alloc(500);
+		print("Proceed Shell> ");
+		gets(code);
+		
+		if (code == "exit") break;
+		
+		try {
+			var str = interpret(code);
+			print("> ");
+			println(str);
+		} catch (ex) {
+			err_println(ex.getMessage()+"\n");
+		}
+	}
+	
+	return 0;
+]
+
+/* Lexer */
+
+@String[] lex(@String code) [
+	var a = new @String[];
+	
+	var currWord = "";
+	
+	var len = code::len;
+	for (var i = 0; i < len; i=i+1) {
+		var ch = code[i];
+		
+		if (ch == ' ' || ch == '\t') {
+			if (currWord::len > 0) a.add(currWord);
+			currWord = "";
+		} else if (ch == ';' || ch == '|' || ch == '&' || ch == '(' || ch == ')' || ch == '{' || ch == '}') {
+			if (currWord::len > 0) a.add(currWord);
+			currWord = "";
+			a.add("".appendch(ch));
+		} else if (ch == '\\') {
+			if (currWord::len > 0) a.add(currWord);
+			currWord = "";
+			i = i + 1;
+			a.add("".appendch(code[i]));
+		} else if (ch == '"') { /* '"' */
+			i = i + 1;
+			while (code[i] != '"') /* '"' */ {
+				currWord = currWord.appendch(code[i]);
+				i = i + 1;
+			}
+		} else if (ch == '\n') {
+			if (currWord::len > 0) a.add(currWord);
+			currWord = "";
+			a.add("".appendch(';'));
+		} else {
+			currWord = currWord.appendch(ch);
+		}
+	}
+	
+	if (currWord::len > 0) a.add(currWord);
+	currWord = "";
+	
+	a.add("(EOF)");
+	
+	println("" + a);
+	
+	return a;
+]
+
+/* Parser helper functions */
+
+@Void accept(@String token, @String[] tokens) throws ex [
+	var tok = tokens.remove(0);
+	
+	if (tok != token) {
+		err_println("Unexpected token '" + tok + "', '" + token + "' expected\n");
+		throw new @Exception.initException("Syntax error!");
+	}
+]
+
+@String next(@String[] tokens) throws ex [
+	if (tokens::size == 0) {
+		err_println("Unexpected EOF!\n");
+		throw new @Exception.initException("Syntax error!");
+	}
+	var next = tokens.remove(0);
+	
+	if (next == ";" || next == "|" || next == "&" || next == "(" || next == ")" || next == "$" || next == "{" || next == "}") {
+		err_println("Unexpected token '" + next + "', '<IDENT>' expected\n");
+		throw new @Exception.initException("Syntax error!");
+	}
+	
+	return next;
+]
+
+/* Parser */
+
+struct @ProgTree {
+	field @StmtTree[] statements;
+	
+	auto @String [
+		return this::statements;
+	]
+};
+
+@ProgTree parseProg(@String[] tokens) throws ex [
+	var tree = new @ProgTree;
+	tree::statements = new @StmtTree[];
+	
+	while (tokens[0] == ";") accept(";", tokens);
+	
+	tree::statements.add(parseStmt(tokens));
+	
+	while (tokens[0] != "(EOF)" && tokens[0] != "end" && tokens[0] != "}") {
+		
+		tree::statements.add(parseStmt(tokens));
+		
+		if (tokens[0] != "(EOF)" && tokens[0][0] != ')' && tokens[0][0] != '}')
+			do accept(";", tokens);
+			while (tokens[0] == ";");
+		else while (tokens[0] == ";") accept(";", tokens);
+	}
+	
+	return tree;
+]
+
+struct @StmtTree {
+	field @Boolean isBlock;
+	field @ProgTree block;
+	
+	field @CmdTree cmd;
+	field @CmdTree[] args;
+	field @String op;
+	field @StmtTree stmt;
+	
+	auto @String [
+		if (this::isBlock) return this::block;
+		if (0 != @Integer @Any this::op) return ""+this::cmd+this::args+this::op+this::stmt;
+		else return ""+this::cmd+this::args;
+	]
+};
+
+@StmtTree parseStmt(@String[] tokens) throws ex [
+	var tree = new @StmtTree;
+	
+	if (tokens[0] == "{") {
+		accept("{", tokens);
+		
+		while (tokens[0] == ";") accept(";", tokens);
+		
+		tree::isBlock = true;
+		tree::block = parseProg(tokens);
+		
+		while (tokens[0] == ";") accept(";", tokens);
+		
+		accept("}", tokens);
+		return tree;
+	} else {
+		tree::isBlock = false;
+	
+		tree::cmd = parseCmd(tokens);
+	
+		tree::args = new @CmdTree[];
+	
+		while (tokens[0] != "(EOF)" && tokens[0][0] != ')' && tokens[0][0] != ';' && tokens[0][0] != '}' && tokens[0][0] != '|' && tokens[0][0] != '&') {
+			tree::args.add(parseCmd(tokens));
+		}
+	}
+	
+	if (tokens[0][0] == '&') {
+		accept("&", tokens);
+		if (tokens[0][0] == '&') accept("&", tokens);
+		tree::op = "&&";
+		tree::stmt = parseStmt(tokens);
+	} else if (tokens[0][0] == '|') {
+		accept("|", tokens);
+		accept("|", tokens);
+		tree::op = "||";
+		tree::stmt = parseStmt(tokens);
+	}
+	
+	return tree;
+]
+
+struct @CmdTree {
+	field @Boolean isStmt;
+	field @String id;
+	field @StmtTree stmt;
+	
+	auto @String [
+		if (this::isStmt) return this::stmt;
+		return this::id;
+	]
+};
+
+@CmdTree parseCmd(@String[] tokens) throws ex [
+	var tree = new @CmdTree;
+	
+	tree::isStmt = tokens[0][0] == '(';
+	
+	if (tree::isStmt) {
+		accept("(", tokens);
+		
+		while (tokens[0] == ";") accept(";", tokens);
+		
+		tree::stmt = parseStmt(tokens);
+		
+		while (tokens[0] == ";") accept(";", tokens);
+		
+		accept(")", tokens);
+	} else {
+	
+		if (tokens[0] == "{") {
+			accept("{", tokens);
+		
+			while (tokens[0] == ";") accept(";", tokens);
+		
+			tree::stmt = new @StmtTree;
+			tree::stmt::isBlock = true;
+			tree::stmt::block = parseProg(tokens);
+		
+			while (tokens[0] == ";") accept(";", tokens);
+		
+			accept("}", tokens);
+		}
+	
+		else tree::id = next(tokens);
+	}
+	
+	return tree;
+]
+
+/* Interpreter */
+
+static @Hashtable<@String> vars;
+
+class @PValue {
+	field @String value;
+};
+
+@String interpret(@String code) throws ex [
+	var tokens = lex(code);
+	var t = parseProg(tokens);
+	accept("(EOF)", tokens);
+	
+	return interpretProg(t);
+]
+
+@String interpretProg(@ProgTree tree) throws ex [
+	var ret = @String null;
+	var exception = @Exception null;
+	
+	println(tree);
+	
+	tree::statements each # (stmt) [
+		try interpretStatement(stmt);
+		catch (ex) {
+			exception = ex;
+			return BREAK();
+		}
+	];
+	
+	if (null != exception) throw exception;
+	
+	return ret;
+]
+
+@String interpretStatement(@StmtTree tree) throws ex [
+	var returnCode = @String null;
+	if (tree::isBlock) returnCode = interpretProg(tree::block);
+	else {
+		
+		@String cmd = interpretCommand(tree::cmd);
+		if (cmd == "true") returnCode = "";
+		else if (cmd == "false") returnCode = null;
+		else if (cmd == "echo") {
+			println(interpretCommand(tree::args[0]));
+			returnCode = null;
+		}
+		else if (cmd == "set") {
+			var a = interpretCommand(tree::args[1]);
+			vars.set(interpretCommand(tree::args[0]), a);
+			returnCode = a;
+		}
+		else if (cmd == "if") {
+			if (!(isNull(interpretCommand(tree::args[0])))) interpretCommand(tree::args[1]);
+			else if (tree::args::size > 2) interpretCommand(tree::args[2]);
+			returnCode = null;
+		}
+		
+		else if (cmd == "while") {
+			while (interpretCommand(tree::args[0]) == "0") interpretCommand(tree::args[1]);
+			returnCode = null;
+		}
+		
+		else {
+			err_println("Unknown command " + cmd + "!\n");
+			throw new @Exception.initException("Semantic error!");
+		}
+	}
+	
+	if (0 == @Integer @Any tree::op) return returnCode;
+	else if (tree::op == "||" && 0 == @Integer @Any returnCode) return interpretStatement(tree::stmt);
+	else if (tree::op == "&&" && 0 != @Integer @Any returnCode) return interpretStatement(tree::stmt);
+	else return returnCode;
+]
+
+@String interpretCommand(@CmdTree tree) throws ex [
+	if (tree::isStmt) return ""+interpretStatement(tree::stmt);
+	
+	var str = "";
+	
+	var len = tree::id::len;
+	for (var i = 0; i < len; i = i + 1) {
+		if (tree::id[i] == '\\') {
+			i = i + 1;
+			if (i == len) {
+				err_println("Syntax error!\n");
+				throw new @Exception.initException("Syntax error!");
+			}
+			str = str.appendch(tree::id[i]);
+		}
+		else if (tree::id[i] == '$') {
+			i = i + 1;
+			
+			var v = "";
+			while (i < len) {
+				if (!(isalnum(tree::id[i]) || tree::id[i] == '_')) {
+					break;
+				}
+				v = v.appendch(tree::id[i]);
+				i = i + 1;
+			}
+			
+			str = str + vars.get(v);
+			str = str.appendch(tree::id[i]);
+		}
+		else str = str.appendch(tree::id[i]);
+	}
+	return str;
+]
+
+extern popen;
+extern pclose;
+extern fgets;
+extern perror;
+
+@String execute(@String[] cmd) [
+	var command = "";
+	cmd each # (str) [ command = command + str + " "; ];
+	
+	var pipe = popen(command,"r");
+	if (isNull(pipe)) {
+		perror("Errors!");
+		exit(1);
+	}
+	
+	var line = @String alloc(256);
+	var output = "";
+	
+	while (!(isNull(fgets(line, 256, pipe)))) output = output + line;
+	pclose(pipe);
+	
+	return output;
+]

@@ -1,0 +1,10 @@
+module arrays2;
+
+extern printf;
+
+@Integer main [
+	var array = new @String[]..1..2..3..4;
+	printf("%s\n", @String array.inject("", #(v, s) v + s));
+	
+	return 0;
+]

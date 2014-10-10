@@ -1,0 +1,16 @@
+module fort;
+
+extern printf;
+
+@Integer main [
+	for (var i = 0; i < 10; i = i::inc) {
+		printf("%i\n", i);
+	}
+	for (var i = 0; i < 20; { i = i::inc; break; }) {
+		printf("%i\n", i);
+	}
+	for (var i = 0; i < 10; i = i::inc) {
+		printf("%i\n", i);
+	}
+	return 0;
+]

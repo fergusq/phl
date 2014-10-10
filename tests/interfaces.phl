@@ -1,0 +1,102 @@
+module interfaces;
+
+import phl::lang::arrays;
+import phl::lang::util;
+
+extern printf;
+
+interface @Number data castable @Integer {
+	@Integer int() [
+		return @Integer this;
+	]
+	@Number add(@Number i) [
+		return @Number (this::int + i::int);
+	]
+	@Number inc [ return @Number (this::int + 1); ]
+};
+
+@Number Number(@Integer i) [
+	return @Number @Any i;
+]
+
+interface @Henkilo data @List {
+
+	@String annaNimi [
+		return @String get(@List this, 0);
+	]
+
+	@Void asetaNimi(@String nimi) [
+		set(@List this, 0, nimi);
+	]
+
+	@Integer annaIka [
+		return @Integer get(@List this, 1);
+	]
+
+	@Void asetaIka(@Integer ika) [
+		set(@List this, 1, ika);
+	]
+};
+
+@Henkilo Henkilo (@String nimi, @Integer ika) [
+	@Henkilo h = @Henkilo @Any alloc(8);
+	$(h:asetaNimi nimi);
+	$(h:asetaIka ika);
+	return h;
+]
+
+struct @Kirja {
+	field @String nimi {
+		get: annaNimi,
+		set: asetaNimi
+	};
+};
+
+@Kirja Kirja [
+	@Kirja k = new @Kirja;
+	return k;
+]
+
+@Integer main() [
+	([
+		@Number a = $(Number 3);
+		printf("%i\n", $( a :add 2 )::inc::inc::int);
+
+		@Closure<@Integer> f = createFactory~<@Integer>();
+		@Integer i = f();
+		@Integer j = $(f);
+		@Integer k = $($(createFactory~<@Integer>));
+		printf("%i%i%i\n", i, j, k);
+	]);
+
+	@Henkilo h = Henkilo("Teuvo Tolvanen", 37);
+	printf("%s: %i\n", h.annaNimi(), h.annaIka());
+
+	@Kirja k = Kirja();
+	$(k:asetaNimi "Taru Sormusten Herrasta");
+	printf("%s\n", k.annaNimi());
+
+	@Array<@Integer> a = Array~<@Integer>(4);
+	$(a:set 0 5);
+	$(a:set 1 6);
+	$(a:set 2 7);
+	$(a:set 3 8);
+	$(a:add 9);
+
+	a = $(a:filter #(i)[return $($(i :mod 2) :eq 0);]);
+
+	printf("size: %i\n", a::size);
+
+	@Integer i = 0;
+	while ($(i :lt a::size)) {
+		printf("%i: %i\n", i, $(a:get i));
+		i = $(+i 1);
+	}
+
+	@String hello = "Hello, ";
+	hello = $(hello:append "World!");
+	printf("%s\n", hello);
+	printf("%i\n", hello == "Hello, World!");
+
+	return 0;
+]

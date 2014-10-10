@@ -1,0 +1,44 @@
+module templates;
+
+extern printf;
+
+interface @ITest<@T> {
+	template @Void typeofT(@T t, @T t2) [
+		t.method();
+		printf("%s\n", typeof t);
+	]
+	
+	auto @String [
+		return "TESTI";
+	]
+};
+static @ITest<@E1> e;
+
+template <@T> @Void callMethod(@T t) [
+	t.method();
+	printf("%s\n", typeof t);
+]
+
+interface @E1 {
+	@Void method [
+		printf("Hello world!\n");
+	]
+};
+
+interface @E2 {
+	@Void method [
+		printf("Hi world!\n");
+	]
+};
+
+@Integer main [
+	@E1 a = null;
+	@E2 b = null;
+	
+	callMethod(a);
+	callMethod(b);
+	
+	e.typeofT(a, a);
+	
+	printf("%s\n", @String new @Array<@ITest<@E1> >..e);
+]

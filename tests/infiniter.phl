@@ -1,0 +1,22 @@
+module infiniter;
+
+extern printf;
+static @Integer counter;
+
+a [
+	var a_ = 0;
+	var b = 0;
+	var c = 0;
+	var d = 0;
+	var e = 0;
+	var f = 0;
+	var g = 0;
+	counter = counter + 1;
+	printf("%i\n", counter);
+	a();
+]
+
+@Integer main [
+	a();
+	return 0;
+]

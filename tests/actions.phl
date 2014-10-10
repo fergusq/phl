@@ -1,0 +1,40 @@
+module actions;
+
+extern printf;
+
+static @Action shout;
+
+@Action cry(@String msg) [
+	return new @Action.init(#(a) [
+		printf($msg + "!!!!!!!!!!!!!!!!!!!!!!!! ...........!!!!!!!!!!!!!!\n");
+	]);
+]
+
+@Void initActions [
+	shout = new @Action.init(#(a) [
+		printf("Shoooooout!\n");
+	]);
+]
+
+class @Action {
+	field @Closure<@Void, @AObject> job {get:job,set:set_job};
+	@Action init(@Closure<@Void, @AObject> job) [
+		this.set_job (job);
+		return this;
+	]
+};
+
+class @AObject {
+	@Void operator -> (@Action a) [ a::job(this); ]
+};
+
+@Integer main [
+	
+	initActions();
+	
+	var shouter = new @AObject;
+	shouter->shout;
+	shouter->cry("I need a new bike!");
+	
+	return 0;
+]

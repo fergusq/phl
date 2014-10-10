@@ -1,0 +1,38 @@
+
+// PHL Type System Proposal
+
+@Integer main [ // main returns integer
+	([
+		@Integer i = 0;		// LEGAL: 0 is integer value
+		@Function f = [];	// LEGAL: [] is function value
+		@List l = (list);	// LEGAL: list returns list type
+
+		@Integer j = [];	// ILLEGAL: [] is not an integer value
+		@Function g = (list);	// ILLEGAL: list does not return function
+		@List m = 0;		// ILLEGAL: 0 is not a list
+	]);
+	([
+		@Function f = [];
+		@List l = (list f);
+		@Integer i = (get l 0);	// LEGAL: get does not return any specific type
+
+		@List<@Function> l2 = (list<@Function> f);
+		/* @Integer i2 = (get l 0); */ // ILLEGAL: get(@List<@Function>) returns @Function
+	]);
+	([
+		@Integer i = (int []);	// Object-to-Integer function
+		i = @Integer [];	// Type cast
+	]);
+	([
+		@Integer i = (createObject<@Integer>);
+	]);
+
+]
+
+@Integer int(@Any a) [
+	return @Integer a;
+]
+
+createObject<@T> [	// Generic function
+	return @T 0;
+]

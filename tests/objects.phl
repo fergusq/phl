@@ -1,0 +1,79 @@
+
+module objects;
+
+extern printf;
+
+struct @Base : @Any {
+	field @String type {
+		get: getType,
+		set: __set__type
+	};
+};
+
+doc ANIMAL CLASS;
+
+struct @Animal : @Base {
+	field @Function<@Void, @Animal> talk {
+		get: _talk,
+		set: __set_talk
+	}; @Void talk [this._talk().(this);]
+
+	field @Function<@Void, @Animal> walk {
+		get: _walk,
+		set: __set_walk
+	}; @Void walk [this._walk().(this);]
+	new [
+		this.__set__type("@Animal");
+
+		this.__set_talk(__animal_talk);
+		this.__set_walk(__animal_walk);
+	]
+};
+
+@Void __animal_talk(@Animal _this) [
+	printf("Animal talks\n");
+]
+
+@Void __animal_walk(@Animal _this) [
+	printf("Animal walks\n");
+]
+
+doc FLYING_ANIMAL CLASS;
+
+struct @FlyingAnimal : @Animal {
+
+	@Void talk [this._talk().(this);]
+	@Void walk [this._walk().(this);]
+
+	field @Function<@Void, @Animal> fly {
+		get: _fly,
+		set: __set_fly
+	}; @Void fly [this._fly().(this);]
+	new [
+		super.new();
+
+		this.__set__type("@FlyingAnimal");
+
+		this.__set_walk(__flying_animal_walk);
+		this.__set_fly(__flying_animal_fly);
+	]
+};
+
+@Void __flying_animal_walk(@Animal _this) [
+	printf("FlyingAnimal walks\n");
+]
+
+@Void __flying_animal_fly(@FlyingAnimal _this) [
+	printf("FlyingAnimal flies\n");
+]
+
+doc MAIN FUNCTION;
+
+@Integer main [
+	@Animal dog = new @Animal;
+	@Animal bat = new @FlyingAnimal;
+	dog.walk();
+	bat.walk();
+	(@FlyingAnimal bat).fly();
+	return 0;
+]

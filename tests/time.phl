@@ -1,0 +1,30 @@
+module time;
+
+extern printf;
+extern clock;
+
+expect @Function<@Integer> clock;
+
+@Integer time_consuming_function (@Integer n) [
+	var freq=n-1;
+	for (var i=2; i<=n; i=i+1) for (var j=i/2;j>1;j=j-1) if (i%j==0) {freq=freq-1; break;}
+	return freq;
+]
+
+@Integer main [
+	
+	var time = clock();
+	
+	doc time_consuming_function(99999);
+	
+	var array = new @Integer[].alloc(ptr_size()+100000000);
+	for (var i = 0; i < 100000000; i=i+1) {
+		array[i] = i;
+		if (i % 340 == 0 && i != 0) printf("%i\n", array[i-1]);
+	}
+	
+	time = clock() - time;
+	printf ("It took me %d clicks (%s seconds).\n",time,(time||1000000).toString2());
+	
+	return 0;
+]

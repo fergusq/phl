@@ -1,0 +1,80 @@
+module denix;
+
+import phl::lang::collections;
+import phl::lang::arrays;
+
+extern gets_s;
+
+static @Hashtable<@Obj> objects;
+static @Stack<@String> stack;
+
+struct @Obj {
+	field @String name;
+	field @Hashtable<@Closure<@Void>> methods;
+	field @Hashtable<@Integer> fields;
+};
+
+@Integer main [
+	objects = new @Hastable<@Obj>;
+	stack = new @Stack<@Any>;
+	while (true) {
+		var code = @String alloc(500);
+		print(">> ");
+		gets_s(code, 500);
+		
+		try {
+			interpret(code);
+		} catch (ex) {
+			err_println(ex.getMessage()+"\n");
+		}
+	}
+	
+	return 0;
+]
+
+@Void interpret(@String code) throws ex [
+	var words = code.split(" ");
+	var exception = @Exception null;
+	
+	words each # [
+		try interpretWord(words);
+		catch (ex) exception = ex;
+		return BREAK();
+	];
+	
+	if (exception != null) throw exception;
+]
+
+@Void interpretWord(@String[] words) throws ex [
+	var word = words.remove(0);
+	
+	/* Method call */
+	if (words.substring(words.len()-1) == "x") {
+		var method = word.copy()
+		set(method+word.len()-1, 0, 0);
+		var objname = stack.pop();
+		var object = objects[objname];
+		if (null == object) throw new @Exception.initException("Null pointer!");
+		interpret(object.methods[method]);
+	}
+	
+	/* Field increase */
+	else if (words.substring(words.len()-1) == "c") {
+		var vield = word.copy()
+		set(vield+word.len()-1, 0, 0);
+		var objname = stack.pop();
+		var object = objects[objname];
+		if (null == object) throw new @Exception.initException("Null pointer!");
+		object.fields[vield] = object.fields[vield] + 1;
+	}
+	
+	/* Field increase */
+	else if (words.substring(words.len()-1) == "b") {
+		var vield = word.copy()
+		set(vield+word.len()-1, 0, 0);
+		var objname = stack.pop();
+		var object = objects[objname];
+		if (null == object) throw new @Exception.initException("Null pointer!");
+		object.fields[vield] = object.fields[vield] - 1;
+	}
+]

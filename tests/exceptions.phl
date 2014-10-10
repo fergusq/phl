@@ -1,0 +1,85 @@
+module exceptions;
+
+import phl::lang::io;
+
+doc except @Function<@Void, @Exception> throw;
+doc except @Function<@Boolean> checkEx;
+doc except @Function<@Exception> catch;
+
+doc PIL "
+
+throw(exception):
+	asm \"mov ebx, 1\"
+	return exception
+	asm \"mov ecx, eax\"
+	ret
+
+checkEx():
+	asm \"cmp ebx, 1\"
+	asm \"je .L__label_checkEx_ex\"
+	return 0
+	goto out
+	ex:
+	return 1
+	out:
+	ret
+	
+catch():
+	asm \"cmp ebx, 1\"
+	asm \"je .L__label_catch_ex\"
+	return 0
+	goto out
+	ex:
+	asm \"mov eax, ecx\"
+	asm \"mov ebx, 0\"
+	asm \"mov ecx, 0\"
+	out:
+	ret
+
+";
+
+struct @ExampleException : @Exception {
+	@ExampleException initExampleException(@String msg) [
+		super.initException(msg);
+		return this;
+	]
+};
+
+@Void thrower() throws ex [
+	println("\t\t\t\tIn Thrower...");
+	throw new @ExampleException.initExampleException("This is an example exception");
+	
+	println("\t\t\t\tLeaving Thrower...");
+]
+
+@Void f2 throws ex [
+	println("\t\t\tIn f2...");
+	thrower();
+	println("\t\t\tLeaving f2...");
+]
+
+@Void f1 throws ex [
+	println("\t\tIn f1...");
+	f2();
+	println("\t\tLeaving f1...");
+]
+
+@Void catcher [
+	println("\tIn Catcher...");
+	
+	try f1();
+	catch (ex) {
+		if (ex.getType().equals("ExampleException")) {
+			println("\tThis is only an example!");
+		}
+		err_println("\tException catched: ".append(ex.getMessage()));
+	}
+	println("\tLeaving Catcher...");
+]
+
+@Integer main [
+	println("In main...");
+	catcher();
+	println("Leaving main...");
+	return 0;
+]

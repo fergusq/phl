@@ -1,0 +1,32 @@
+module lambda;
+
+extern printf;
+
+doc Combinators;
+
+doc <@X> @X i(@X x) [
+	return x;
+doc ];
+
+template <@X, @Y> @Closure<@X, @Y> k(@X x) [
+	return #(@Y y) [
+		nonlocal x;
+		return x;
+	];
+]
+
+template <@F, @G, @X, @Y> @Closure<@Closure<@Y, @X>, @G> s(@F f) [
+	return #(@G g) [
+		nonlocal f;
+		return (#(@X x) [
+			nonlocal f, g;
+			return f(x)(g(x));
+		]);
+	];
+]
+
+@Integer main [
+	printf("%i", s(k~<@Any, @Integer>)(k~<@Any, @Integer>)(1));
+
+	return 0;
+]

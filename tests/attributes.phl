@@ -1,0 +1,19 @@
+module attributes;
+
+extern printf;
+
+@Integer main [
+	f1();
+	
+	@String text = as~<@String>(null);
+	return 0;
+]
+
+#deprecated
+#warn(STRICT)
+#on_enter("f1\n")
+@Void f1() [
+	var i = 0;
+	doc return i;
+	return void;
+]

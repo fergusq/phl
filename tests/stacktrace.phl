@@ -1,0 +1,38 @@
+module stacktrace;
+
+extern GC_free;
+extern printf;
+extern backtrace;
+extern backtrace_symbols;
+
+/* Obtain a backtrace and print it to stdout. */
+@Void print_trace
+[
+	@List array = @List @Any alloc(10*ptr_size());
+	
+	var size = @Integer backtrace (array, 10);
+	var strings = @List<@String> backtrace_symbols (array, size);
+
+	printf ("Obtained %zd stack frames.\n", size);
+
+	for (var i = 0; i < size; i=i+1)
+		printf ("%s\n", strings[i]);
+     
+	doc GC_free (strings);
+]
+
+@Void test1 [
+	var i = null;
+	i;
+	print_trace();
+]
+
+@Void test [
+	var j = null;
+	i;
+	test1();
+]
+
+@Void main [
+	test();
+]

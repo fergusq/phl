@@ -1,0 +1,67 @@
+module words;
+
+extern getchar;
+extern printf;
+
+interface @Char data @Integer {
+
+	@Boolean v [
+		if ((@Integer this)=='a') return true;
+		if ((@Integer this)=='e') return true;
+		if ((@Integer this)=='i') return true;
+		if ((@Integer this)=='o') return true;
+		if ((@Integer this)=='u') return true;
+		if ((@Integer this)=='y') return true;
+		return this::c::n;
+	]
+	
+	@Boolean c [
+		if ((@Integer this)=='b') return true;
+		if ((@Integer this)=='c') return true;
+		if ((@Integer this)=='d') return true;
+		if ((@Integer this)=='f') return true;
+		if ((@Integer this)=='g') return true;
+		if ((@Integer this)=='h') return true;
+		if ((@Integer this)=='j') return true;
+		if ((@Integer this)=='k') return true;
+		if ((@Integer this)=='l') return true;
+		if ((@Integer this)=='m') return true;
+		if ((@Integer this)=='n') return true;
+		if ((@Integer this)=='p') return true;
+		if ((@Integer this)=='q') return true;
+		if ((@Integer this)=='r') return true;
+		if ((@Integer this)=='s') return true;
+		if ((@Integer this)=='t') return true;
+		if ((@Integer this)=='v') return true;
+		if ((@Integer this)=='w') return true;
+		if ((@Integer this)=='x') return true;
+		if ((@Integer this)=='z') return true;
+		if ((@Integer this)==10 ) return true;
+		if ((@Integer this)==32 ) return true;
+		return false;
+	]
+	
+	@Boolean eq(@Integer i) alias ==;  @Boolean operator==(@Integer i) alias @Integer.eq;
+	@Boolean neq(@Integer i) alias !=; @Boolean operator!=(@Integer i) alias @Integer.neq;
+
+};
+
+@Integer main [
+	@Boolean space = true;
+	@Char cho = @Char getchar();
+	@Char ch = @Char getchar();
+	do {
+		if (cho::c && ch::v && space::n) printf("-");
+		printf("%c", cho);
+		
+		space=cho==32;
+		
+		if (ch==10) break;
+		
+		cho = ch;
+		ch = @Char getchar();
+	} while (true);
+	printf("\n");
+	return 0;
+]
+

@@ -1,0 +1,24 @@
+module closures;
+
+import phl::lang::util;
+
+extern printf;
+
+@Integer main [
+	var adder = #(@Integer i)->@Closure<@Integer, @Integer> [
+		return #(@Integer j)->@Integer [
+			nonlocal i;
+			return i+j;
+		];
+	];
+	
+	printf("%s\n", typeof(adder));
+	
+	var add3 = adder(3);
+	printf("2+3=%i, 6+3=%i\n", add3(2), add3(6));
+	
+	var a = compose~<@Integer, @Integer, @Integer>(#(i) -(i), #(i) i*2);
+	printf("6 -> %i\n", a(6));
+	
+	return 0;
+]

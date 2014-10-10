@@ -1,0 +1,20 @@
+
+module fractions;
+
+import phl::lang::io;
+
+@Void print_f(@Fraction f) [
+	printf("%i/%i\n", f::m, f::n);
+]
+
+@Integer main [
+	
+	@Fraction f = 2||4;
+	f = f + 4;
+	print_f(f);
+	
+	f = f / (7||12);
+	print_f(f);
+	
+	return 0;
+]

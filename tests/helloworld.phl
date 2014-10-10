@@ -1,0 +1,69 @@
+
+import phl::lang::core;
+
+extern printf;
+extern GC_get_heap_size;
+
+@Integer main [
+	printf("Heap size = %i\n", GC_get_heap_size());
+
+	apply([printf("Hello World!\n")]);
+	(#(t,u)[(t u)]printf"Hello World!\n");
+
+	a = 1;
+	b = 3;
+	c = (+ a b);
+	
+	printf("1 + 3 = %i\n", c);
+
+	a = 0;
+	b = 1;
+	c = 0;
+
+	s(#(a, b, c, f)[
+		c = (+ a b);
+		a = b;
+		b = c;
+
+		printf("Fibonacci: %i\n", c);
+		ifLess4(c, 50, s, f, a, b, c);
+	], a, b, c);
+
+	l = (list 3 4);
+	printf("Lista: %i (%i, %i)\n", l, (get l 0), (get l 1));
+
+	a = 5;
+	b = 2;
+
+	closure = #(vars)[
+		a = (get vars 1);
+		b = (get vars 2);
+		printf("%i, %i\n", a, b);
+	];
+
+	@List cf = (list closure a b);
+
+	(@Function (get cf 0) cf);
+
+	(call cf);
+
+	if ((>= a b),
+		(list #(vars)[
+			a=(get vars 1);
+			b=(get vars 2);
+
+			printf("%i >= %i\n", a, b);
+		] a b));
+
+	printf("Heap size = %zu\n", GC_get_heap_size());
+
+	return 0;
+]
+
+apply(f) [
+	(f);
+]
+
+s(f, a, b, c) [
+	f(a, b, c, f);
+]

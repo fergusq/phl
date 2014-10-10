@@ -1,0 +1,31 @@
+module oliot;
+
+extern printf;
+
+doc Kopio C++:n ostream -luokasta;
+class @Tulostaja {
+	@Void tulosta(@String viesti) [
+		printf("%s\n", viesti);
+	]
+	@Tulostaja operator <<(@String viesti) [
+		printf("%s", viesti);
+		return this;
+	]
+
+	@String endl [
+		return "\n";
+	]
+};
+
+@Integer main [
+	var viesti = "Päivää!";
+	var vastaus = "Samoin.";
+	var tulostaja = new @Tulostaja;
+
+	tulostaja.tulosta("Viesti: " + viesti);
+	tulostaja << "Vastaus: " << vastaus << tulostaja::endl;
+	
+	tulostaja << "Nämä tekstit tulosti " << tulostaja << ".\n";
+
+	return 0;
+]
