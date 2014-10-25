@@ -27,6 +27,8 @@ import org.kaivos.proceedhl.parser.ProceedTree.FunctionTree;
 import org.kaivos.proceedhl.parser.ProceedTree.GenericStruct;
 import org.kaivos.proceedhl.parser.ProceedTree.InterfaceTree;
 import org.kaivos.proceedhl.parser.ProceedTree.LineTree;
+import org.kaivos.proceedhl.parser.ProceedTree.LineTree.StaticCommand;
+import org.kaivos.proceedhl.parser.ProceedTree.LineTree.StaticCondition;
 import org.kaivos.proceedhl.parser.ProceedTree.MethodCallTree;
 import org.kaivos.proceedhl.parser.ProceedTree.NonLocal;
 import org.kaivos.proceedhl.parser.ProceedTree.StartTree;
@@ -1260,11 +1262,14 @@ public class ProceedCompiler {
 			println();
 		}
 		
+		println("\toax = 0");
+		
 		println("\t__out_" + func + ":");
 		
 		
 		// onLeave = viesti joka tulostetaan kun funktiota poistutaan, auttaa debuggaamaan
 		if (useAttributes && tree.flags.contains("on_leave")) {
+			println("\trtmp = oax");
 			String function = "printf";
 			String arg = "\"on_leave "+tree.name+"\\n\"";
 			for (String s: tree.flags1.get("on_leave").args) {
@@ -1273,6 +1278,7 @@ public class ProceedCompiler {
 				else arg = s;
 			}
 			if (arg.startsWith("\"")) println("\tproceed " + function + "(" + getConstant(arg.substring(1, arg.length()-1)) + ")");
+			println("\toax = rtmp");
 		}
 		
 		println("\tret");
@@ -1566,7 +1572,24 @@ public class ProceedCompiler {
 				}
 				
 				println("\t%block_end");
-			}
+			} else if (t.type == LineTree.Type.STATIC_IF) {
+				boolean cond = false;
+				if (t.cond == StaticCondition.EQUALS_TYPE) {
+					cond = changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges)
+							.equals(changeTemplateTypes(checkTypeargs(t.typedef2), currFunc.templateChanges));
+				}
+				
+				if (cond)
+					compileLine(t.block, inTry);
+				
+				else if (t.elseBlock != null) compileLine(t.elseBlock, inTry);
+			} else if (t.type == LineTree.Type.STATIC_COMMAND) {
+				if (t.command == StaticCommand.ERROR) {
+					err("static __error(" + t.message + ")");
+				} else if (t.command == StaticCommand.WARN) {
+					warn(W_NORMAL, "static __warn(" + t.message + ")");
+				}
+			} 
 		} catch (Exception ex) {
 			//System.err.println("; E: " + currModuleFile + ":" + (t.line+1));
 			throw ex;
@@ -1632,6 +1655,8 @@ public class ProceedCompiler {
 		
 		allowPrinting = false;
 		errorThrown = true;
+		
+		ProceedParser.errors++;
 	}
 	
 	/**
@@ -2619,7 +2644,7 @@ public class ProceedCompiler {
 			out.flush();
 			
 			for (int i = 0; i < t.args.size(); i++) {
-				System.err.println(decltype(t.args.get(i), inTry));
+				//System.err.println(decltype(t.args.get(i), inTry));
 			}
 			
 			/*if (ftype.name.equals(FUNC_TYPE) && t.args.size() > (ftype.subtypes.size()-1) && ftype.subtypes.size() != 0 && ftype.subtypes.get(ftype.subtypes.size()-1).equals("...")) {

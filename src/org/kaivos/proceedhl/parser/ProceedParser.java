@@ -26,6 +26,8 @@ import org.kaivos.stg.error.UnexpectedTokenSyntaxError;
 public class ProceedParser 
 {
 	
+	public static int errors = 0;
+	
 	private static boolean createDocs;
 	private static boolean compilePIL;
 	
@@ -199,6 +201,8 @@ public class ProceedParser
 		}
 		
 		parseStream(in, a.lastText());
+		
+		if (errors > 0) System.exit(errors);
 	}
 	
 	public static void parseFile(String file) {
@@ -299,14 +303,20 @@ public class ProceedParser
 
 			System.err.println(";    [Line " + e.getLine() + "] Line: '"
 					+ s.getLine(e.getLine() - 1).trim() + "'");
+			
+			errors++;
 		} catch (SyntaxError e) {
 
 			System.err.println("; E: [" + e.getFile() + ":" + e.getLine() + "] " + e.getMessage());
 			System.err.println(";    [" + e.getFile() + ":" + e.getLine() + "] Line: \t"
 					+ s.getLine(e.getLine() - 1).trim());
+			
+			errors++;
 		} catch (StackOverflowError e) {
 			System.err.println(";E: Internal Compiler Exception: Stack overflow exception");
 			e.printStackTrace();
+			
+			errors++;
 		}
 
 		{

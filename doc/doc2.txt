@@ -40,7 +40,7 @@ VERSIO 1.2.7 == Uutta:
 			doc    false    null    true    void
 
 		Nimet saavat alkaa vain merkeillä
-			a-z A-Z ö å ö ß ü _
+			a-z A-Z ä å ö ß ü _
 
 		Nimet eivät saa sisältää operaattoreita.
 

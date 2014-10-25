@@ -274,8 +274,8 @@ public class ProceedTree extends ParserTree {
 					this.subtypes.add(newt);
 					this.bonusType = null;
 				}
-				else if (seek(s).equals("*")) {
-					accept("*", s);
+				else if (seek(s).equals("~")) {
+					accept("~", s);
 					TypeTree newt = new TypeTree();
 					newt.name = this.name;
 					newt.subtypes = (ArrayList<TypeTree>) this.subtypes.clone();
@@ -1030,6 +1030,19 @@ public class ProceedTree extends ParserTree {
 		
 		public boolean vardef = false;
 		
+		public enum StaticCondition {
+			EQUALS_TYPE
+		}
+		
+		public enum StaticCommand {
+			WARN,
+			ERROR
+		}
+		
+		public StaticCondition cond;
+		public StaticCommand command;
+		public String message;
+		
 		public String var;
 		public ExpressionTree expr;
 		
@@ -1043,6 +1056,8 @@ public class ProceedTree extends ParserTree {
 		public int line;
 		
 		public enum Type {
+			STATIC_IF,
+			STATIC_COMMAND,
 			IF,
 			WHILE,
 			DO_WHILE,
@@ -1060,7 +1075,7 @@ public class ProceedTree extends ParserTree {
 		
 		public Type type;
 		
-		public TypeTree typedef = null;//TypeTree.getDefault(ProceedCompiler.TOP_TYPE);
+		public TypeTree typedef = null, typedef2 = null;//TypeTree.getDefault(ProceedCompiler.TOP_TYPE);
 		
 		public void parse(TokenScanner s) throws SyntaxError {
 			parse_(s, true);
@@ -1073,7 +1088,56 @@ public class ProceedTree extends ParserTree {
 				type = Type.NULL_STATEMENT;
 				return;
 			}
-			if (seek(s).equals("if") || seek(s).equals("while")) {
+			if (seek(s).equals("static")) {
+				accept("static", s);
+				if (seek(s).equals("if")) {
+					accept("if", s);
+					type = Type.STATIC_IF;
+					switch (accept(new String[] {"__equals_type"}, s)) {
+					case "__equals_type":
+						cond = StaticCondition.EQUALS_TYPE;
+						accept("(", s);
+						typedef = new TypeTree();
+						typedef.parse(s);
+						accept(",", s);
+						typedef2 = new TypeTree();
+						typedef2.parse(s);
+						accept(")", s);
+						break;
+					default:
+						break;
+					}
+					
+					block = new LineTree();
+					block.parse_(s, requireSemicolon);
+					
+					if (seek(s).equals("else")) {
+						
+						accept("else", s);
+						elseBlock = new LineTree();
+						elseBlock.parse_(s, requireSemicolon);
+					} 
+				} else {
+					type = Type.STATIC_COMMAND;
+					switch (accept(new String[] {"__warn", "__error"}, s)) {
+					case "__warn":
+						command = StaticCommand.WARN;
+						accept("(", s);
+						message = next(s);
+						accept(")", s);
+						break;
+					case "__error":
+						command = StaticCommand.ERROR;
+						accept("(", s);
+						message = next(s);
+						accept(")", s);
+					default:
+						break;
+					}
+					accept(";", s);
+				}
+				
+			} else if (seek(s).equals("if") || seek(s).equals("while")) {
 				if (accept(new String[] {"if", "while"}, s).equals("if")) type = Type.IF;
 				else type = Type.WHILE;
 				accept("(", s);
@@ -1236,7 +1300,7 @@ public class ProceedTree extends ParserTree {
 	public static class MethodCallTree extends TreeNode {
 		
 		public final static String[] OPERATORS = {
-			"::", ".", "(", "[",
+			"::", ".", "(", "[", "~",
 			"**",
 			"*", "/", "%",
 			"+", "-",
@@ -1256,7 +1320,7 @@ public class ProceedTree extends ParserTree {
 			"/[A-ZÄÖÅ_][a-zA-ZÄÖÅäöå0-9_]*/"};
 		
 		public final static String[] OPERATORS_PRIM = {
-			"::", ".", "(", "["
+			"::", ".", "(", "[", "~"
 		};
 		
 		public final static String[] OPERATORS_NPRIM = {
@@ -1509,6 +1573,24 @@ public class ProceedTree extends ParserTree {
 						e.args.add(e1);
 						e.function.method = "operator@" + getOperatorAlias("[]=");
 					}
+					
+					type = Type.EXPRESSION;
+					expr = e;
+					
+					parse2(s, methodsAllowed, -1);
+					break prim;
+				} else if (seek(s).equals("~")) {
+					ExpressionTree e = new ExpressionTree();
+					e.type = ExpressionTree.Type.FUNCTION_CALL_LISP;
+					e.function = new MethodCallTree();
+					e.function.expr = expr;
+					
+					e.function.method = "operator@" + getOperatorAlias("~");
+	
+					e.function.type = Type.METHOD;
+					
+					
+					accept("~", s);
 					
 					type = Type.EXPRESSION;
 					expr = e;
