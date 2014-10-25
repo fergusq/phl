@@ -1324,7 +1324,7 @@ public class ProceedTree extends ParserTree {
 		};
 		
 		public final static String[] OPERATORS_NPRIM = {
-			"[",
+			"[", "~",
 			"**",
 			"*", "/", "%",
 			"+", "-",

@@ -2543,6 +2543,8 @@ public class ProceedCompiler {
 					|| expectedType.name.equals(LIST_TYPE))
 					&& expectedType.subtypes.size() != 0) type = expectedType.subtypes.get(0);
 			
+			markExterns.add("function@alloc");
+			
 			if (name != null)
 				println("\t" + name + " = function@alloc("+(size*Registers.REGISTER_SIZE)+")");
 			
