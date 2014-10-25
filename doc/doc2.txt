@@ -1,10 +1,11 @@
 VERSIO 1.2.7 == Uutta:
 
-	- Pointer-tyypin voi lyhentää @Tyyppi*
+	- Pointer-tyypin voi lyhentää @Tyyppi~
 	- Listan voi luoda syntaksilla {a, ...}; tyyppi voi olla joko @List<@T> tai @Pointer<@T>
 	- Metodin voi määritellä rajapinnan ulkopuolella, jolloin sen nimi on @Rajapinta.metodi; hyödyllinen jos rajapinnan määrittely ja toteutukset pidetään erossa toisistaan
 	- Metodien tyyppiparametrit
-	- kääntäminen ilman std-kirjastoa --nostd
+	- Kääntäminen ilman std-kirjastoa --nostd
+	- '~'-operaattori
 
 	PROCEED HIGH LANGUAGE (PHL)
 	VERSIO 1.2.6
