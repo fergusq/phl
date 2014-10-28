@@ -627,6 +627,38 @@ public class ProceedTree extends ParserTree {
 			return s;
 		}
 		
+		@SuppressWarnings("unchecked")
+		public FunctionTree clonec() {
+			FunctionTree nt = new FunctionTree();
+			nt.lines = (ArrayList<LineTree>) this.lines.clone();
+			
+			nt.params = (ArrayList<String>) this.params.clone();
+			nt.paramtypes = (ArrayList<TypeTree>) this.paramtypes.clone();
+			
+			nt.returnType = this.returnType;
+			
+			nt.alias = this.alias;
+			nt.throwsEx = this.throwsEx;
+			nt.isAbstract = this.isAbstract;
+			nt.isExtern = this.isExtern;
+			
+			nt.name = this.name;
+			nt.owner = this.owner;
+			nt.module = this.module;
+			nt.field = this.field;
+			
+			nt.genericHandler = this.genericHandler;
+			
+			nt.flags = this.flags;
+			nt.flags1 = this.flags1;
+			
+			nt.typeargs = (ArrayList<String>) this.typeargs.clone();
+			
+			nt.template = this.template;
+			
+			return nt;
+		}
+		
 	}
 	
 	/**

@@ -6,6 +6,8 @@ VERSIO 1.2.7 == Uutta:
 	- Metodien tyyppiparametrit
 	- Kääntäminen ilman std-kirjastoa --nostd
 	- '~'-operaattori
+	- Käännöksenaikaiset ehtorakenteet static if -konstruktiolla
+	- Käännöksenaikaiset varoitukset ja virheet
 
 	PROCEED HIGH LANGUAGE (PHL)
 	VERSIO 1.2.6

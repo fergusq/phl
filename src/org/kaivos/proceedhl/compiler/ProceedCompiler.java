@@ -340,7 +340,8 @@ public class ProceedCompiler {
 			documentator.endFuncs();
 			documentator.startInterfaces();
 		}
-		
+
+		// Lisää rajapinnat listaan
 		for (InterfaceTree t : tree.interfaces) {
 			if (interfaces.containsKey(t.name)) {
 				err("!E Interface " + t.name + " already exists!");
@@ -356,6 +357,7 @@ public class ProceedCompiler {
 			documentator.endInterfaces();
 		}
 		
+		// Lisää rakenteet ja rakenteita vastaavat rajapinnat listaan
 		for (StructTree t : tree.structs) {
 			if (interfaces.containsKey(t.name)) {
 				err("!E Interface " + t.name + " already exists!");
@@ -384,12 +386,13 @@ public class ProceedCompiler {
 		
 		funcs = (ArrayList<FunctionTree>) tree.functions.clone();
 		
+		// Alustaa rajapintojen funktiot – Lisää this-parametrit ja manglaa tyyppiparametrit
 		for (InterfaceTree t : tree.interfaces) {
 			for (int i = 0; i < t.functions.size(); i++) {
 				FunctionTree t1 = t.functions.get(i);
 				
 				t1.params.add(0, "this");
-				t1.paramtypes.add(0, TypeTree.getDefault(t.name, (String[]) t.typeargs.toArray(new String[t.typeargs.size()])));
+				t1.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
 				
 				for (int j = 0; j < t1.typeargs.size(); j++) {
 					t1.typeargs.set(j, "f" + t.name + "." + t1.name + ":" + t1.typeargs.get(j));
@@ -411,6 +414,7 @@ public class ProceedCompiler {
 			}
 		}
 		
+		// Varmistaa, että ylityypin mahdolliset tyyppiargumentit on manglattu
 		for (StructTree t : tree.structs) {
 			currFunc = new FunctionTree();
 			currFunc.genericHandler.add("i" + t.name);
@@ -419,6 +423,7 @@ public class ProceedCompiler {
 			t.superType = checkTypeargs(t.superType);
 		}
 		
+		// Käy läpi rakenteet ja päivittää tyyppitiedon ja ylirakenteiden metodit
 		for (StructTree t : tree.structs) {
 			FunctionTree newf = null;
 			for (FunctionTree t1 : t.functions) {
@@ -449,6 +454,9 @@ public class ProceedCompiler {
 
 				newf.lines.add(0, line);
 			}
+			
+			// (Jos rakenne on luokka, metodit ovat virtuaalisia)
+			// Luo wrapperimetodit ja tallentaa metodit luokkaan
 			if (t.isClass) {
 				
 				for (int i = 0; i < t.functions.size(); i++) {
@@ -500,7 +508,7 @@ public class ProceedCompiler {
 						t2.paramtypes = (ArrayList<TypeTree>) t1.paramtypes.clone();
 						
 						t2.params.add(0, "this");
-						t2.paramtypes.add(0, TypeTree.getDefault(t.name, (String[]) t.typeargs.toArray(new String[t.typeargs.size()])));
+						t2.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
 						
 						t2.returnType = t1.returnType;
 						
@@ -574,10 +582,10 @@ public class ProceedCompiler {
 						// rakenna @Function -tyyppinen esitys metodista
 						ArrayList<TypeTree> subtypes = new ArrayList<>();
 						subtypes.add(t1.returnType);
-						subtypes.add(TypeTree.getDefault(t.name, (String[]) t.typeargs.toArray(new String[t.typeargs.size()])));
+						subtypes.add(TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
 						for (int j = 0; j < t1.paramtypes.size(); j++) subtypes.add(t1.paramtypes.get(j));
 						
-						FieldTree field = new FieldTree("method@" + t1.name, TypeTree.getDefault(FUNC_TYPE, (TypeTree[]) subtypes
+						FieldTree field = new FieldTree("method@" + t1.name, TypeTree.getDefault(FUNC_TYPE, subtypes
 								.toArray(new TypeTree[subtypes.size()])), "method@get_" + t1.name, "method@set_" + t1.name);
 						
 						t.fields.add(field);
@@ -604,10 +612,12 @@ public class ProceedCompiler {
 					newf.lines.add(0, line);
 				}
 			} else {
+				// Rakenne – metodit eivät ole virtuaalisia
 				addSuperMethodsNonVirtual(t, t.superType, t.functions);
 			}
 		}
 		
+		// Luo rakenteiden kenttien asettaja- ja antajametodit
 		for (StructTree t : tree.structs) {
 			addSuperFields(t, t.superType, t.fields);
 			for (int i = 0; i < t.fields.size(); i++) {
@@ -664,7 +674,7 @@ public class ProceedCompiler {
 					}
 					
 					t1.params.add(0, "this");
-					t1.paramtypes.add(0, TypeTree.getDefault(t.name, (String[]) t.typeargs.toArray(new String[t.typeargs.size()])));
+					t1.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
 					
 					t1.returnType = f.type;
 					
@@ -737,7 +747,7 @@ public class ProceedCompiler {
 					}
 					
 					t1.params.add(0, "this");
-					t1.paramtypes.add(0, TypeTree.getDefault(t.name, (String[]) t.typeargs.toArray(new String[t.typeargs.size()])));
+					t1.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
 					
 					t1.params.add("value");
 					t1.paramtypes.add(f.type);
@@ -782,7 +792,7 @@ public class ProceedCompiler {
 				t2.paramtypes = (ArrayList<TypeTree>) t1.paramtypes.clone();
 				
 				t2.params.add(0, "this");
-				t2.paramtypes.add(0, TypeTree.getDefault(t.name, (String[]) t.typeargs.toArray(new String[t.typeargs.size()])));
+				t2.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
 				
 				t2.returnType = t1.returnType;
 				
@@ -815,6 +825,7 @@ public class ProceedCompiler {
 			}
 		}
 		
+		// Varmistaa, että funktioiden parametrien ja palautusarvon tyypit eivät sisällä manglaamattomia tyyppiparametreja
 		for (int i = 0; i < funcs.size(); i++) {
 			
 			FunctionTree t = currFunc = funcs.get(i);
@@ -1037,7 +1048,7 @@ public class ProceedCompiler {
 		for (int i = 0; i < t.functionsOrg.size(); i++) {
 			FunctionTree f = t.functionsOrg.get(i);
 			
-			FunctionTree t1 = new FunctionTree();
+			FunctionTree t1 = f.clonec();
 			{ // tehdään wrapperimetodi
 				LineTree line = new LineTree();
 				{
@@ -1082,37 +1093,25 @@ public class ProceedCompiler {
 				
 				t1.alias = null;
 				
-				t1.name = f.name;
-				
 				t1.returnType = fixTypeargs(f.returnType, currStruct.superType, t);
 				
-				t1.params = (ArrayList<String>) f.params.clone();
-				t1.paramtypes = (ArrayList<TypeTree>) f.paramtypes.clone();
 				for (int j = 0; j < t1.paramtypes.size(); j++) {
 					t1.paramtypes.set(j, fixTypeargs(t1.paramtypes.get(j), currStruct.superType, t));
 				}
 
 				t1.typeargs = (ArrayList<String>) f.typeargs.clone();
-				t1.typeargs.addAll(t.typeargs);
+				t1.typeargs.addAll(0, t.typeargs);
 				t1.template = false; // t.template; TODO struct-templatet
-				//System.err.println("<" + t1.typeargs + "> " + t1.name);
 				t1.typeargsAlreadySet = true;
-				
+
+				t1.genericHandler = new HashSet<>();
 				t1.genericHandler.addAll(f.genericHandler);
-				t1.owner = f.owner;
-				t1.field = f.field;
-				t1.throwsEx = f.throwsEx;
-				t1.flags = f.flags;
-				t1.flags1 = (HashMap<String, Flag>) f.flags1.clone();
-				
-				t1.module = f.module;
 			}
 			methods2.add(t1);
 		}
 		methods.addAll(0, methods2);
 	}
 	
-	@SuppressWarnings("unchecked")
 	private void addSuperMethodsNonVirtual(StructTree currStruct, TypeTree superType, ArrayList<FunctionTree> methods) throws CompilerError {
 		if (superTypes.contains(superType.name)) {
 			err("Invalid super class " + superType + ", circulation error");
@@ -1143,40 +1142,20 @@ public class ProceedCompiler {
 				continue;
 			}
 			
-			FunctionTree t1 = new FunctionTree();
+			FunctionTree t1 = f.clonec();
 			{ // Kopioidaan metodi
-				t1.lines = (ArrayList<LineTree>) f.lines.clone();
-				
-				t1.alias = f.alias;
-				
-				t1.name = f.name;
-				
 				t1.returnType = fixTypeargs(f.returnType, currStruct.superType, t);
-				
-				t1.params = (ArrayList<String>) f.params.clone();
-				t1.paramtypes = (ArrayList<TypeTree>) f.paramtypes.clone();
 				for (int j = 0; j < t1.paramtypes.size(); j++) {
 					t1.paramtypes.set(j, fixTypeargs(t1.paramtypes.get(j), currStruct.superType, t));
 				}
 
-				t1.typeargs = (ArrayList<String>) f.typeargs.clone(); // TODO Muutos aiemmin t.typeargs
-				t1.typeargs.addAll(t.typeargs);
-				t1.template = f.template; // t.template; TODO struct-templatet TESTI
-				//System.err.println("<" + t1.typeargs + "> " + t1.name);
+				t1.typeargs.addAll(0, t.typeargs);
 				t1.typeargsAlreadySet = true;
 				
+				//System.err.println(demanglefunction(t1.name) + "" + t1.typeargs + "" + t1.template);
+				
+				t1.genericHandler = new HashSet<>();
 				t1.genericHandler.addAll(f.genericHandler);
-				t1.owner = f.owner;
-				t1.field = f.field;
-				t1.throwsEx = f.throwsEx;
-				
-				t1.flags = f.flags;
-				t1.flags1 = (HashMap<String, Flag>) f.flags1.clone();
-				
-				t1.isAbstract = f.isAbstract;
-				t1.isExtern = f.isExtern;
-				
-				t1.module = f.module;
 			}
 			methods2.add(t1);
 		}
@@ -1877,7 +1856,7 @@ public class ProceedCompiler {
 			subtypes.add(checkTypeargs(currFunc.returnType));
 			for (int i = 1; i < currFunc.paramtypes.size(); i++) subtypes.add(checkTypeargs(currFunc.paramtypes.get(i)));
 			
-			return new TypeValue("var@nonlocal", TypeTree.getDefault(CLOSURE_TYPE, (TypeTree[]) subtypes
+			return new TypeValue("var@nonlocal", TypeTree.getDefault(CLOSURE_TYPE, subtypes
 					.toArray(new TypeTree[subtypes.size()])));
 		} else if (statics.containsKey(ident)) {
 			if (allowPrinting) markExterns.add("static@" + ident);
@@ -1903,7 +1882,7 @@ public class ProceedCompiler {
 				infer(subtypes, expectedType.subtypes, functions.get(ident), typeargs);
 			}
 			
-			TypeTree typeargs1 = TypeTree.getDefault("Typeargs", (TypeTree[]) typeargs.toArray(new TypeTree[typeargs.size()]));
+			TypeTree typeargs1 = TypeTree.getDefault("Typeargs", typeargs.toArray(new TypeTree[typeargs.size()]));
 			
 			ArrayList<TypeTree> subtypes = new ArrayList<>();
 			subtypes.add(fixTypeargs(functions.get(ident).returnType, typeargs1, functions.get(ident)));
@@ -1935,27 +1914,10 @@ public class ProceedCompiler {
 				
 				if (!functions.containsKey(name))
 				{ // lisätään metodi funktiolistaan
-					FunctionTree t2 = new FunctionTree();
-
-					t2.lines = (ArrayList<LineTree>) t1.lines.clone();
+					FunctionTree t2 = t1.clonec();
 					
-					t2.params = (ArrayList<String>) t1.params.clone();
-					t2.paramtypes = (ArrayList<TypeTree>) t1.paramtypes.clone();
-					
-					t2.returnType = t1.returnType;
-					
-					t2.alias = t1.alias;
-					t2.throwsEx = t1.throwsEx;
-					
+					// funktio nimi
 					t2.name = name;
-					t2.owner = t1.owner;
-					t2.field = t1.field;
-					
-					t2.genericHandler = t1.genericHandler;
-					
-					t2.flags = t1.flags;
-					t2.flags1 = t1.flags1;
-					
 					
 					// lisätään lista tyyppiparametreista, jotka korvataa uusilla tyypeillä
 					t2.template = false;
@@ -1965,8 +1927,6 @@ public class ProceedCompiler {
 							t2.templateChanges.put(t1.typeargs.get(i), typeargs.get(i));
 						}
 					}
-					
-					t2.typeargs = (ArrayList<String>) t1.typeargs.clone();
 					
 					if (allowPrinting) funcs.add(t2);
 					if (allowPrinting) functions.put(t2.name, t2);
@@ -1981,7 +1941,7 @@ public class ProceedCompiler {
 			
 			if (allowPrinting) markExterns.add(name); // merkataan funktio riippuvuudeksi
 			
-			return new TypeValue(name, TypeTree.getDefault(FUNC_TYPE, (TypeTree[]) subtypes
+			return new TypeValue(name, TypeTree.getDefault(FUNC_TYPE, subtypes
 					.toArray(new TypeTree[subtypes.size()])).setBonus(bonus));
 		} else if (Arrays.asList("==", "!=", "!", "<", ">", "<=", ">=", "+", "-", "*", "/", "%", "and", "or", "xor", "__at1__", "__at2__").contains(ident)) {
 			switch (ident) {
@@ -2095,7 +2055,6 @@ public class ProceedCompiler {
 		return compileExpression(t, null, TypeTree.getDefault(TOP_TYPE), inTry);
 	}
 
-	@SuppressWarnings("unchecked")
 	private TypeValue compileMethodCall(MethodCallTree t, String name, TypeTree expectedType, boolean inTry) throws CompilerError {
 		if (t.type == MethodCallTree.Type.METHOD) {
 			int objectID = ++ccounter;
@@ -2136,7 +2095,7 @@ public class ProceedCompiler {
 					
 					infer(subtypes, expectedType.subtypes, t1, typeargs);
 					
-					TypeTree typeargs1 = TypeTree.getDefault("Typeargs", (TypeTree[]) typeargs.toArray(new TypeTree[typeargs.size()]));
+					TypeTree typeargs1 = TypeTree.getDefault("Typeargs", typeargs.toArray(new TypeTree[typeargs.size()]));
 					
 					subtypes = new ArrayList<>();
 					subtypes.add(fixTypeargs(t1.returnType, typeargs1, t1));
@@ -2163,27 +2122,9 @@ public class ProceedCompiler {
 						
 						if (!functions.containsKey(fname))
 						{ // lisätään metodi funktiolistaan
-							FunctionTree t2 = new FunctionTree();
-
-							t2.lines = (ArrayList<LineTree>) t1.lines.clone();
-							
-							t2.params = (ArrayList<String>) t1.params.clone();
-							t2.paramtypes = (ArrayList<TypeTree>) t1.paramtypes.clone();
-							
-							t2.returnType = t1.returnType;
-							
-							t2.alias = t1.alias;
-							t2.throwsEx = t1.throwsEx;
+							FunctionTree t2 = t1.clonec();
 							
 							t2.name = fname;
-							t2.owner = t1.owner;
-							t2.field = t1.field;
-							
-							t2.genericHandler = t1.genericHandler;
-							
-							t2.flags = t1.flags;
-							t2.flags1 = t1.flags1;
-							
 							
 							// lisätään lista tyyppiparametreista, jotka korvataan uusilla tyypeillä
 							t2.template = false;
@@ -2193,8 +2134,6 @@ public class ProceedCompiler {
 									t2.templateChanges.put(t1.typeargs.get(i), typeargs.get(i));
 								}
 							}
-							
-							t2.typeargs = (ArrayList<String>) t1.typeargs.clone();
 							
 							if (allowPrinting) funcs.add(t2);
 							if (allowPrinting) functions.put(t2.name, t2);
@@ -2211,7 +2150,7 @@ public class ProceedCompiler {
 					
 					if (t1.throwsEx) bonus = TypeTree.getDefault(EXCEPTION_TYPE);
 					
-					return new TypeValue("_o" + objectID, fname, TypeTree.getDefault(METHOD_TYPE, (TypeTree[]) subtypes
+					return new TypeValue("_o" + objectID, fname, TypeTree.getDefault(METHOD_TYPE, subtypes
 							.toArray(new TypeTree[subtypes.size()])).setBonus(bonus));
 					
 					
@@ -2239,7 +2178,7 @@ public class ProceedCompiler {
 	 * @param method The name of the function or method
 	 * @return The demangled name of the function or method
 	 */
-	private String demangle(String method) {
+	private static String demangle(String method) {
 		if (method.startsWith("operator@")) method = ProceedTree.demangleOperator(method);
 		return demanglefunction(method);
 		/*if (method.startsWith("function@")) method = method.substring("function@".length());
@@ -2249,7 +2188,7 @@ public class ProceedCompiler {
 		return method;*/
 	}
 	
-	private String demanglefunction(String function) {
+	private static String demanglefunction(String function) {
 		if (!function.startsWith("function@")) function = "function@" + function;
 		
 		if (function.startsWith("function@method@") || function.startsWith("function@vmethod@")) {
@@ -2272,7 +2211,7 @@ public class ProceedCompiler {
 	 * @param field The name of the field
 	 * @return The demangled name of the field
 	 */
-	private String demanglef(String field) {
+	private static String demanglef(String field) {
 		if (field.startsWith("method@")) field = field.substring("method@".length());
 		//if (method.startsWith("operator@")) method = "operator_" + method.substring("operator@".length());
 		if (field.startsWith("operator@")) field = ProceedTree.demangleOperator(field);
@@ -2392,7 +2331,7 @@ public class ProceedCompiler {
 			
 			t1.nonlocal = new ArrayList<>();
 			
-			Entry<String, TypeTree>[] var = (Entry<String, TypeTree>[]) vars.entrySet().toArray(new Entry[vars.entrySet().size()]);
+			Entry<String, TypeTree>[] var = vars.entrySet().toArray(new Entry[vars.entrySet().size()]);
 			
 			// tallenna myös nykyiset nonlocalit
 			if (currFunc != null && currFunc.nonlocal != null) {
@@ -2479,7 +2418,7 @@ public class ProceedCompiler {
 			subtypes.add(checkTypeargs(t1.returnType));
 			for (int i = 1; i < t1.paramtypes.size(); i++) subtypes.add(checkTypeargs(t1.paramtypes.get(i)));
 			
-			return TypeTree.getDefault(CLOSURE_TYPE, (TypeTree[]) subtypes
+			return TypeTree.getDefault(CLOSURE_TYPE, subtypes
 					.toArray(new TypeTree[subtypes.size()]));
 		}
 		if (t.type == Type.METHOD_CHAIN) {
@@ -2978,7 +2917,7 @@ public class ProceedCompiler {
 		}
 	}
 	
-	private int getWorth(TypeTree a) {
+	private static int getWorth(TypeTree a) {
 		switch (a.name) {
 		case UNIT_TYPE:
 		case METHOD_TYPE:
