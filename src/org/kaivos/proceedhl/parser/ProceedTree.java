@@ -393,6 +393,9 @@ public class ProceedTree extends ParserTree {
 		public String name;
 		public ArrayList<String> args = new ArrayList<>();
 		public Flag() {}
+		public Flag(String...args) {
+			this.args.addAll(Arrays.asList(args));
+		}
 	}
 	
 	public static void parseFlag(TokenScanner s, Set<String> flags, HashMap<String, Flag> flags1) throws SyntaxError {
@@ -2052,37 +2055,33 @@ public class ProceedTree extends ParserTree {
 				type = Type.VALUE;
 				return;
 			}
-			/*if (!seek(s).equals("(")) {
-				type = Type.VALUE;
-				return;
-			}
-			
-			type = Type.FUNCTION_CALL;
-			accept("(", s);
-			if (!seek(s).equals(")")) while (true) {
-				ExpressionTree e = new ExpressionTree();
-				e.parse(s);
-				args.add(e);
-				if (accept(new String[]{",", ")"}, s).equals(")")) break;
-			} else accept(")", s);
-			
-			if (contains(MethodCallTree.OPERATORS, seek(s))>= 0) {
-				type = Type.METHOD_CHAIN;
-				this.function = new MethodCallTree();
-				this.function.expr = new ExpressionTree();
-				this.function.expr.type = Type.FUNCTION_CALL;
-				this.function.expr.var = var;
-				this.function.expr.typeargs = typeargs;
-				this.function.expr.args = args;
-				this.function.parse2(s, false, operatorC);
-				return;
-			}*/
 			
 		}
 
 		@Override
 		public String generate(String a) {
 			return null;
+		}
+		
+		public static ExpressionTree vartree(String name) {
+			ExpressionTree n = new ExpressionTree(name);
+			return n;
+		}
+		
+		public static ExpressionTree casttree(TypeTree to, ExpressionTree from) {
+			ExpressionTree n = new ExpressionTree();
+			n.type = Type.TYPE_CAST;
+			n.expr = from;
+			n.typeCast = to;
+			return n;
+		}
+		
+		public static ExpressionTree calltree(String func, ExpressionTree...args) {
+			ExpressionTree n = new ExpressionTree();
+			n.type = Type.FUNCTION_CALL;
+			n.var = func;
+			for (ExpressionTree e : args) n.args.add(e);
+			return n;
 		}
 		
 	}
