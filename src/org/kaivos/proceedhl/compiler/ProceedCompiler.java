@@ -1383,7 +1383,7 @@ public class ProceedCompiler {
 							a = compileExpression(t.expr, var="_NLV", b=nl.type, inTry);
 							if (!doCasts(a, b, var)) err("(" + t.var + ") Invalid assigment: can't cast from " + a + " to " + b);
 							
-							out.store("odx", "get(var@nonlocal, " + (i*2+2) + ")");
+							out.set("odx", "get(var@nonlocal, " + (i*2+2) + ")");
 							out.setref("odx", "_NLV");
 							if (allowPrinting) markExterns.add("get");
 							break assign;
@@ -1430,7 +1430,7 @@ public class ProceedCompiler {
 								err("Invalid nonlocal variable: " + s + " is already declared as " + vars.get(s));
 							}
 							vars.put(s, nl.type);
-							out.store("odx", "get(var@nonlocal, " + (i*2+2) + ")");
+							out.set("odx", "get(var@nonlocal, " + (i*2+2) + ")");
 							out.deref("var@" + s, "odx");
 							if (allowPrinting) markExterns.add("get");
 							found = true;

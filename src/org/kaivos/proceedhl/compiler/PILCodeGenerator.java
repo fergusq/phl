@@ -80,7 +80,7 @@ public class PILCodeGenerator extends CodeGenerator {
 
 	@Override
 	public void store(String reg, String val) {
-		println("put" + reg + " " + val);
+		println("put " + reg + " " + val);
 	}
 
 	@Override
