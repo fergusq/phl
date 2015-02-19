@@ -13,11 +13,21 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Stack;
+import java.util.stream.Collectors;
 
 import org.kaivos.proceed.compiler.Registers;
 import org.kaivos.proceedhl.parser.NumberParser;
 import org.kaivos.proceedhl.compiler.CompilerError;
 import org.kaivos.proceedhl.compiler.CodeGenerator.PILCondition;
+import org.kaivos.proceedhl.compiler.type.FloatType;
+import org.kaivos.proceedhl.compiler.type.FunctionType;
+import org.kaivos.proceedhl.compiler.type.IntegerType;
+import org.kaivos.proceedhl.compiler.type.IntegerType.Size;
+import org.kaivos.proceedhl.compiler.type.ArrayType;
+import org.kaivos.proceedhl.compiler.type.PointerType;
+import org.kaivos.proceedhl.compiler.type.ReferenceType;
+import org.kaivos.proceedhl.compiler.type.TypeName;
+import org.kaivos.proceedhl.compiler.type.VoidType;
 import org.kaivos.proceedhl.documentgen.PHLHeaderCreator;
 import org.kaivos.proceedhl.parser.ProceedParser;
 import org.kaivos.proceedhl.parser.ProceedTree;
@@ -51,6 +61,8 @@ public class ProceedCompiler {
 	public static final String OBJ_TYPE = "Object";
 	
 	public static final String INT_TYPE = "Integer";
+	public static final String FLOAT_TYPE = "Decimal";
+	
 	public static final String BOOL_TYPE = "Boolean";
 	public static final String STR_TYPE = "String";
 	public static final String LIST_TYPE = "List";
@@ -106,7 +118,7 @@ public class ProceedCompiler {
 	 * Kaikki funktiot, joita kutsutaan jostain, lisätään tähän,
 	 * ja lopuksi nämä lisätään outputtiin riippuvaisuuksiksi
 	 */
-	public Set<String> markExterns = new HashSet<String>();
+	public Set<TypeName> markExterns = new HashSet<>();
 	
 	private int ccounter;
 	private static int lambdaCounter;
@@ -178,7 +190,8 @@ public class ProceedCompiler {
 			currModule = tree.module;
 			if (out1 != null || nullOut) out = new PILCodeGenerator(out1);
 			else try {
-				out = new PILCodeGenerator(new PrintWriter(outputPath + tree.module.replace("::", "_") + ".pil"));
+				//out = new PILCodeGenerator(new PrintWriter(outputPath + tree.module.replace("::", "_") + ".pil"));
+				out = new CCodeGenerator(new PrintWriter(outputPath + tree.module.replace("::", "_") + ".c"));
 			} catch (FileNotFoundException e) {
 				e.printStackTrace();
 			}
@@ -277,7 +290,7 @@ public class ProceedCompiler {
 		}
 		
 		for (String s : tree.externs) {
-			if (!externs.containsKey(s)) out.extern(s);
+			if (!externs.containsKey(s)) out.extern(new FunctionType(new PointerType(new VoidType())), s);
 			externs.put(s, TypeTree.getDefault(EXT_FUNC_TYPE, TOP_TYPE));
 		}
 		
@@ -290,7 +303,7 @@ public class ProceedCompiler {
 		
 		out.startfile();
 		
-		out.extern("GC_init");
+		out.extern(new FunctionType(new PointerType(new VoidType()), new VoidType()), "GC_init");
 		
 		for (String s : tree.svarargfuncs) svarargfuncs.add(s);
 		
@@ -300,7 +313,7 @@ public class ProceedCompiler {
 		
 		for (Entry<String, TypeTree> s : tree.statics.entrySet()) {
 			statics.put(s.getKey(), s.getValue());
-			out.staticvar("static@" + s.getKey());
+			out.staticvar(typeFromTree(s.getValue()), "static@" + s.getKey());
 			if (createDocs) documentator.docStatic(s.getKey(), s.getValue());
 		}
 		
@@ -327,13 +340,14 @@ public class ProceedCompiler {
 		}
 
 		if (mainFound) {
-			out.function(true, false, "main", "argc", "argv");
+			out.function(true, false, new IntegerType(Size.I32),
+					"main", new TypeName("argc", new IntegerType(Size.I32)), new TypeName("argv", new ArrayType(new PointerType(new IntegerType(Size.I8)))));
 			out.proceed("GC_init");
 			for (String s : onloads) {
 				out.proceed(s);
-				markExterns.add(s);
+				markExterns.add(new TypeName(s, new FunctionType(new PointerType(new VoidType()))));
 			}
-			out.proceed("function@main", "argc", "argv");
+			out.proceed("function@main", "var@argc", "var@argv");
 			out.endfunction();
 		}
 		
@@ -920,11 +934,15 @@ public class ProceedCompiler {
 			if (!t.template) compileFunction(t);
 		}
 		
-		for (String s : markExterns) {
-			if (sortedFuncs.contains(s) || privatePilFunctions.contains(s) || privateStatics.contains(s))
-				out.extern_pil(s);
+		for (TypeName ts : markExterns) {
+			String s = ts.getName();
+			if (sortedFuncs.contains(s) || privatePilFunctions.contains(s) || privateStatics.contains(s)) {
+				out.extern_pil(ts.getType(), s);
+			}
 			else if (privateExterns.contains(s))
-				out.extern(s);
+				out.extern(ts.getType(), s);
+			
+			out.extern(ts.getType(), s);
 		}
 		
 		/* Debug-tiedot */
@@ -939,7 +957,8 @@ public class ProceedCompiler {
 				if (structures.get(t.name) != null) {
 					out.stabs_typedef(t.toString().replace("@", ""), STABS_structType(t, structures.get(t.name)));
 				}
-				out.type(t.toString().replace("@", ""));
+				
+				out.type(t.toString().replace("@", ""), new PointerType(new PointerType(new VoidType())));
 			}
 			
 			uniqueListFreeze = false;
@@ -997,6 +1016,44 @@ public class ProceedCompiler {
 			members += demanglef(s.fields.get(i).name) + ":" + "!" + type.toString().replace("@", "") + "?" + "," + i*Registers.REGISTER_SIZE_BIT + "," + Registers.REGISTER_SIZE_BIT + ";";
 		}
 		return "*s" + size + members + ";";
+	}
+	
+	public static org.kaivos.proceedhl.compiler.type.Type typeFromTree(TypeTree t) {
+		switch (t.name) {
+		case INT_TYPE:
+			return new IntegerType(Size.LONG);
+		case FLOAT_TYPE:
+			return new FloatType(FloatType.Size.DOUBLE);
+		case BOOL_TYPE:
+			return new IntegerType(Size.LONG);
+		case STR_TYPE:
+			return new PointerType(new IntegerType(Size.I8));
+		case PTR_TYPE:
+			if (t.subtypes.size() > 0)
+				return new PointerType(typeFromTree(t.subtypes.get(0)));
+			return new PointerType(new VoidType());
+		case LIST_TYPE:
+			return new PointerType(new VoidType());
+		case OBJ_TYPE:
+			return new ReferenceType(t.name);
+		case NULL_TYPE:
+		case UNIT_TYPE:
+			return new IntegerType(Size.I8);
+		case METHOD_TYPE:
+			return new FunctionType(typeFromTree(t.subtypes.get(0)));
+		case FUNC_TYPE:
+		case EXT_FUNC_TYPE:
+			if (t.subtypes.size() > 0)
+				return new FunctionType(typeFromTree(t.subtypes.get(0)), t.subtypes.stream().skip(1).map(t_ -> typeFromTree(t_)).collect(Collectors.toList()));
+		default:
+			if (structures.containsKey(t.name))
+				return new ReferenceType(t.name);
+			if (interfaces.containsKey(t.name)) {
+				if (interfaces.get(t.name).data != null)
+					return typeFromTree(interfaces.get(t.name).data);
+			}
+			return new PointerType(new VoidType());
+		}
 	}
 
 	Stack<String> superTypes = new Stack<>();
@@ -1257,15 +1314,22 @@ public class ProceedCompiler {
 			return;
 		}
 		
+		TypeName[] params = new TypeName[tree.params.size()];
+		org.kaivos.proceedhl.compiler.type.Type[] tparams = new org.kaivos.proceedhl.compiler.type.Type[tree.params.size()];
+		for (int i = 0; i < tree.params.size(); i++)
+			params[i] = new TypeName(tree.params.get(i), tparams[i] = typeFromTree(changeTemplateTypes(tree.paramtypes.get(i), currFunc.templateChanges)));
+		
 		if (tree.isExtern) {
-			if (allowPrinting) markExterns.add("function@" + tree.name);
+			if (allowPrinting) markExterns.add(new TypeName("function@" + tree.name,
+					new FunctionType(
+							typeFromTree(changeTemplateTypes(tree.returnType, currFunc.templateChanges)), 
+							tparams
+					)));
 			return;
 		}
 		
-		String[] params = new String[tree.params.size()];
-		for (int i = 0; i < tree.params.size(); i++) params[i] = "var@" + tree.params.get(i);
-		
-		out.function(false, tree.flags.contains(":argreg:"), "function@"+tree.name, params);
+		out.function(false, tree.flags.contains(":argreg:"),
+				typeFromTree(changeTemplateTypes(tree.returnType, currFunc.templateChanges)), "function@"+tree.name, params);
 		
 		vars.clear();
 		
@@ -1292,6 +1356,9 @@ public class ProceedCompiler {
 			emptyLine();
 		}
 		
+		if (useAttributes && tree.flags.contains("on_leave"))
+			out.set(typeFromTree(changeTemplateTypes(tree.returnType, currFunc.templateChanges)), "_RV", "0");
+		
 		out.ret("0");
 		
 		out.label("__out_" + func);
@@ -1299,7 +1366,7 @@ public class ProceedCompiler {
 		
 		// onLeave = viesti joka tulostetaan kun funktiota poistutaan, auttaa debuggaamaan
 		if (useAttributes && tree.flags.contains("on_leave")) {
-			out.set("rtmp", "oax");
+			out.set(new PointerType(new VoidType()), "rtmp", "_RV");
 			String function = "printf";
 			String arg = "\"on_leave "+tree.name+"\\n\"";
 			for (String s: tree.flags1.get("on_leave").args) {
@@ -1383,9 +1450,9 @@ public class ProceedCompiler {
 							a = compileExpression(t.expr, var="_NLV", b=nl.type, inTry);
 							if (!doCasts(a, b, var)) err("(" + t.var + ") Invalid assigment: can't cast from " + a + " to " + b);
 							
-							out.set("odx", "get(var@nonlocal, " + (i*2+2) + ")");
+							out.call(new PointerType(typeFromTree(b)), "odx", "get", "var@nonlocal", (i*2+2) + "");
 							out.setref("odx", "_NLV");
-							if (allowPrinting) markExterns.add("get");
+							if (allowPrinting) markExterns.add(new TypeName("get", new FunctionType(new PointerType(new VoidType()))));
 							break assign;
 						}
 					}
@@ -1430,9 +1497,9 @@ public class ProceedCompiler {
 								err("Invalid nonlocal variable: " + s + " is already declared as " + vars.get(s));
 							}
 							vars.put(s, nl.type);
-							out.set("odx", "get(var@nonlocal, " + (i*2+2) + ")");
-							out.deref("var@" + s, "odx");
-							if (allowPrinting) markExterns.add("get");
+							out.call(new PointerType(typeFromTree(nl.type)), "odx", "get", "var@nonlocal",  (i*2+2) + "");
+							out.deref(typeFromTree(nl.type), "var@" + s, "odx");
+							if (allowPrinting) markExterns.add(new TypeName("get", new FunctionType(new PointerType(new VoidType()))));
 							found = true;
 							break;
 						}
@@ -1549,7 +1616,7 @@ public class ProceedCompiler {
 				
 				if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
 				
-				out.goif(PILCondition.EQUALS, "_CV", "0", "_while"+ counter+"_continue");
+				out.goif(PILCondition.INQUALS, "_CV", "0", "_while"+ counter+"_continue");
 				out.label("_while"+ counter);
 			} else if (t.type == LineTree.Type.BREAK) {
 				out.go(breakLabel);
@@ -1756,7 +1823,7 @@ public class ProceedCompiler {
 		
 			consts.put(str1, ++constantCounter);
 			
-			out.constant("_c@" + constantCounter, str1);
+			out.stringConstant("_c@" + constantCounter, str1);
 			
 			return "_c@" + constantCounter;
 		} else {
@@ -1775,20 +1842,6 @@ public class ProceedCompiler {
 		out.setAllowPrinting(allowPrinting);
 	}
 
-	@SuppressWarnings("unused")
-	@Deprecated
-	private void print(String str) {
-		if (allowPrinting && out != null) out.print(str);
-	}
-	@Deprecated
-	private void println(String str) {
-		if (allowPrinting && out != null) out.println(str);
-	}
-	@SuppressWarnings("unused")
-	@Deprecated
-	private void println() {
-		if (allowPrinting && out != null) out.println();
-	}
 	private void emptyLine() {
 		if (allowPrinting && out != null) out.println("");
 	}
@@ -1886,7 +1939,7 @@ public class ProceedCompiler {
 	 * @return viittaus
 	 * @throws CompilerError jos nimeä ei löydetä
 	 */
-	@SuppressWarnings("unchecked")
+	@SuppressWarnings({ "unchecked", "null" })
 	public TypeValue getIdent(String ident, ArrayList<TypeTree> typeargs, TypeTree expectedType) throws CompilerError {
 		typeargs = (ArrayList<TypeTree>) typeargs.clone();
 		for (int i = 0; i < typeargs.size(); i++) {
@@ -1915,7 +1968,7 @@ public class ProceedCompiler {
 			return new TypeValue("var@nonlocal", TypeTree.getDefault(CLOSURE_TYPE, subtypes
 					.toArray(new TypeTree[subtypes.size()])));
 		} else if (statics.containsKey(ident)) {
-			if (allowPrinting) markExterns.add("static@" + ident);
+			if (allowPrinting) markExterns.add(new TypeName("static@" + ident, typeFromTree(statics.get(ident))));
 			return new TypeValue("static@" + ident, statics.get(ident));
 		} else if (functions.containsKey(ident)) {  // Muuttujat ensin, sitten funktiot
 			
@@ -1995,87 +2048,99 @@ public class ProceedCompiler {
 			
 			if (functions.get(ident).throwsEx) bonus = TypeTree.getDefault(EXCEPTION_TYPE);
 			
-			if (allowPrinting) markExterns.add(name); // merkataan funktio riippuvuudeksi
+			if (allowPrinting && !functions.get(ident).template) {
+				
+				markExterns.add(new TypeName(name, typeFromTree(TypeTree.getDefault(FUNC_TYPE, subtypes
+						.toArray(new TypeTree[subtypes.size()])).setBonus(bonus)))); // merkataan funktio riippuvuudeksi
+			}
 			
 			return new TypeValue(name, TypeTree.getDefault(FUNC_TYPE, subtypes
 					.toArray(new TypeTree[subtypes.size()])).setBonus(bonus));
 		} else if (Arrays.asList("==", "!=", "!", "<", ">", "<=", ">=", "+", "-", "*", "/", "%", "and", "or", "xor", "__at1__", "__at2__").contains(ident)) {
+			final TypeTree btt = TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, TOP_TYPE, TOP_TYPE);
+			final TypeTree bb = TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, BOOL_TYPE);
+			final TypeTree bbb = TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, BOOL_TYPE, BOOL_TYPE);
+			final TypeTree bii = TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, INT_TYPE, INT_TYPE);
+			final TypeTree iii = TypeTree.getDefault(FUNC_TYPE, INT_TYPE, INT_TYPE, INT_TYPE);
+			final TypeTree tt = TypeTree.getDefault(FUNC_TYPE, TOP_TYPE, TOP_TYPE);
+			final TypeTree ttt = TypeTree.getDefault(FUNC_TYPE, TOP_TYPE, TOP_TYPE, TOP_TYPE);
+			
 			switch (ident) {
 			case "==":
 			case "__eq__":
-				if (allowPrinting) markExterns.add("lib@eq");
-				return new TypeValue("lib@eq", TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, TOP_TYPE, TOP_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@eq", typeFromTree(btt)));
+				return new TypeValue("lib@eq", btt);
 			case "!=":
 			case "__neq__":
-				if (allowPrinting) markExterns.add("lib@neq");
-				return new TypeValue("lib@neq", TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, TOP_TYPE, TOP_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@neq", typeFromTree(btt)));
+				return new TypeValue("lib@neq", btt);
 			case "!":
 			case "__not__":
-				if (allowPrinting) markExterns.add("lib@not");
-				return new TypeValue("lib@not", TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, BOOL_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@not", typeFromTree(bb)));
+				return new TypeValue("lib@not", bb);
 			case "<":
 			case "__lt__":
-				if (allowPrinting) markExterns.add("lib@lt");
-				return new TypeValue("lib@lt", TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, INT_TYPE, INT_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@lt", typeFromTree(bii)));
+				return new TypeValue("lib@lt", bii);
 			case "<=":
 			case "__leq__":
-				if (allowPrinting) markExterns.add("lib@le");
-				return new TypeValue("lib@le", TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, INT_TYPE, INT_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@le", typeFromTree(bii)));
+				return new TypeValue("lib@le", bii);
 			case ">":
 			case "__gt__":
-				if (allowPrinting) markExterns.add("lib@gt");
-				return new TypeValue("lib@gt", TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, INT_TYPE, INT_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@gt", typeFromTree(bii)));
+				return new TypeValue("lib@gt", bii);
 			case ">=":
 			case "__geq__":
-				if (allowPrinting) markExterns.add("lib@ge");
-				return new TypeValue("lib@ge", TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, INT_TYPE, INT_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@ge", typeFromTree(bii)));
+				return new TypeValue("lib@ge", bii);
 				
 			case "+":
 			case "__add__":
-				if (allowPrinting) markExterns.add("lib@add");
-				return new TypeValue("lib@add", TypeTree.getDefault(EXT_FUNC_TYPE, INT_TYPE, INT_TYPE, INT_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@add", typeFromTree(iii)));
+				return new TypeValue("lib@add", iii);
 			case "-":
 			case "__sub__":
-				if (allowPrinting) markExterns.add("lib@sub");
-				return new TypeValue("lib@sub", TypeTree.getDefault(EXT_FUNC_TYPE, INT_TYPE, INT_TYPE, INT_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@sub", typeFromTree(iii)));
+				return new TypeValue("lib@sub", iii);
 			case "*":
 			case "__mul__":
-				if (allowPrinting) markExterns.add("lib@mul");
-				return new TypeValue("lib@mul", TypeTree.getDefault(EXT_FUNC_TYPE, INT_TYPE, INT_TYPE, INT_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@mul", typeFromTree(iii)));
+				return new TypeValue("lib@mul", iii);
 			case "/":
 			case "__div__":
-				if (allowPrinting) markExterns.add("lib@div");
-				return new TypeValue("lib@div", TypeTree.getDefault(EXT_FUNC_TYPE, INT_TYPE, INT_TYPE, INT_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@div", typeFromTree(iii)));
+				return new TypeValue("lib@div", iii);
 			case "%":
 			case "__mod__":
-				if (allowPrinting) markExterns.add("lib@mod");
-				return new TypeValue("lib@mod", TypeTree.getDefault(EXT_FUNC_TYPE, INT_TYPE, INT_TYPE, INT_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@mod", typeFromTree(iii)));
+				return new TypeValue("lib@mod", iii);
 				
 			case "and":
 			case "__and__":
-				if (allowPrinting) markExterns.add("lib@and");
-				return new TypeValue("lib@and", TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, BOOL_TYPE, BOOL_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@and", typeFromTree(bbb)));
+				return new TypeValue("lib@and", bbb);
 			case "or":
 			case "__or__":
-				if (allowPrinting) markExterns.add("lib@or");
-				return new TypeValue("lib@or", TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, BOOL_TYPE, BOOL_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@or", typeFromTree(bbb)));
+				return new TypeValue("lib@or", bbb);
 			case "xor":
 			case "__xor__":
-				if (allowPrinting) markExterns.add("lib@xor");
-				return new TypeValue("lib@xor", TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, BOOL_TYPE, BOOL_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@xor", typeFromTree(bbb)));
+				return new TypeValue("lib@xor", bbb);
 				
 			case "__at1__":
-				if (allowPrinting) markExterns.add("lib@at1");
-				return new TypeValue("lib@at1", TypeTree.getDefault(FUNC_TYPE, TOP_TYPE, TOP_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@at1", typeFromTree(tt)));
+				return new TypeValue("lib@at1", tt);
 			case "__at2__":
-				if (allowPrinting) markExterns.add("lib@at2");
-				return new TypeValue("lib@at2", TypeTree.getDefault(FUNC_TYPE, TOP_TYPE, TOP_TYPE, TOP_TYPE));
+				if (allowPrinting) markExterns.add(new TypeName("lib@at2", typeFromTree(ttt)));
+				return new TypeValue("lib@at2", ttt);
 			default:
 				err(ident + " not implemented!");
 				return new TypeValue("lib@void", TypeTree.getDefault(TMP_TYPE));
 			}
 		} else if (externs.containsKey(ident)) {
-			if (allowPrinting) markExterns.add(ident);
+			if (allowPrinting) markExterns.add(new TypeName(ident, typeFromTree(externs.get(ident))));
 			return new TypeValue(ident, externs.get(ident));
 		} else {
 			if (currFunc != null && currFunc.nonlocal != null)
@@ -2089,10 +2154,10 @@ public class ProceedCompiler {
 							warn(W_STRICT, "Dereferenced a non-local variable " + ident + " which has not been declared. This can lead to an undefined behaviour.");
 						}
 						{
-							out.call("odx", "get", "var@nonlocal", ""+(i*2+2));
-							out.deref(name, "odx");
+							out.call(new PointerType(typeFromTree(nl.type)), "odx", "get", "var@nonlocal", ""+(i*2+2));
+							out.deref(typeFromTree(nl.type), name, "odx");
 						}
-						if (allowPrinting) markExterns.add("get");
+						if (allowPrinting) markExterns.add(new TypeName("get", typeFromTree(nl.type)));
 						return new TypeValue(name, nl.type);
 					}
 				}
@@ -2192,8 +2257,8 @@ public class ProceedCompiler {
 						fname = getIdent(t1.alias, new ArrayList<TypeTree>(), null).value;
 					}
 					
-					if (t1.template) { // FIXME
-						fname = "templatemethod@" + tt.name + "." + t1.name;
+					if (t1.template) {
+						fname = "templatemethod@" + t1.name;
 						for (TypeTree ptype: typeargs) fname += "@f" + ptype.toBasic();
 						
 						if (!functions.containsKey(fname))
@@ -2218,10 +2283,18 @@ public class ProceedCompiler {
 						fname = "function@" + fname;
 					}
 					
+					subtypes.add(1, TypeTree.getDefault(tt.name));
+					
 					// metodin nimi selvitetty! laitetaan se haluttuun muuttujaan
-					if (name != null) out.set(name, fname);
+					if (name != null) out.set(typeFromTree(TypeTree.getDefault(FUNC_TYPE, subtypes
+							.toArray(new TypeTree[subtypes.size()]))), name, fname);
 
-					if (allowPrinting) markExterns.add(fname); // merkataan funktio riippuvuudeksi
+					if (allowPrinting && !t1.template) {
+						markExterns.add(new TypeName(fname, typeFromTree(TypeTree.getDefault(FUNC_TYPE, subtypes
+								.toArray(new TypeTree[subtypes.size()]))))); // merkataan funktio riippuvuudeksi
+					}
+					
+					subtypes.remove(1);
 					
 					// Jos metodi heittää virheen, sen tyyppiin lisätään "boonuksena" virhetyyppi (esim. @Method<;@Exception>)
 					TypeTree bonus = null;
@@ -2338,9 +2411,10 @@ public class ProceedCompiler {
 					}
 					
 					if (found) {
-						fname = getIdent(fname, a.subtypes, TypeTree.getDefault(FUNC_TYPE, typeCast, a)).value;
-						if (allowPrinting) markExterns.add(fname);
-						out.call(name, fname, name);
+						TypeValue tv = getIdent(fname, a.subtypes, TypeTree.getDefault(FUNC_TYPE, typeCast, a));
+						fname = tv.value;
+						if (allowPrinting) markExterns.add(new TypeName(fname, typeFromTree(tv.type)));
+						out.call(typeFromTree(typeCast), name, fname, name);
 						return typeCast;
 					}
 				}
@@ -2358,7 +2432,7 @@ public class ProceedCompiler {
 			for (TypeTree tt1: t.typeargs) typeargs.add(changeTemplateTypes(tt1, currFunc.templateChanges));
 			
 			TypeValue tv = getAtomic(t.var, typeargs, expectedType);
-			if (name != null) out.set(name.startsWith("_"), name, tv.value);
+			if (name != null) out.set(name.startsWith("_"), typeFromTree(tv.type), name, tv.value);
 			return tv.type;
 		}
 		
@@ -2369,9 +2443,9 @@ public class ProceedCompiler {
 					NonLocal nl = currFunc.nonlocal.get(i);
 					if (nl.name.equals(t.var)) {
 						if (name != null) {
-							out.call(name.startsWith("_"), name, "get", "var@nonlocal", ""+(i*2+3));
+							out.call(name.startsWith("_"), typeFromTree(nl.type), name, "get", "var@nonlocal", ""+(i*2+3));
 						}
-						if (allowPrinting) markExterns.add("get");
+						if (allowPrinting) markExterns.add(new TypeName("get", new FunctionType(new PointerType(new VoidType()))));
 						return nl.type;
 					}
 				}
@@ -2469,8 +2543,8 @@ public class ProceedCompiler {
 			
 			// allocia tarvitaan määrittely-ympäristön tallentamiseen
 			if (allowPrinting) {
-				markExterns.add("function@alloc");
-				markExterns.add("set");
+				markExterns.add(new TypeName("function@alloc", new FunctionType(new PointerType(new VoidType()), new IntegerType(Size.LONG))));
+				markExterns.add(new TypeName("set", new FunctionType(new PointerType(new VoidType()))));
 			}
 			
 			if (name != null && functions.containsKey("alloc"))  {
@@ -2485,7 +2559,8 @@ public class ProceedCompiler {
 				else size = var.length*2 + 2;
 				
 				// luodaan closure-olio haluttuun muuttujaan tarvittavan kokoisena
-				out.call(name, "function@alloc", ""+size*Registers.REGISTER_SIZE);
+				out.call(true, new IntegerType(Size.LONG), "_SV", "*", ""+size, "osize");
+				out.call(new PointerType(new VoidType()), name, "function@alloc", "_SV");
 				
 				// tallennetaan viittaus funktioon
 				out.proceed("set", name, "0", ""+size);
@@ -2496,16 +2571,16 @@ public class ProceedCompiler {
 				// tallennetaan nykyiset nonlocalit
 				if (currFunc != null && currFunc.nonlocal != null) {
 					for (int i = 0; i < currFunc.nonlocal.size(); i++) {
-						out.call("odx", "get", "var@nonlocal", ""+(i*2+2));
+						out.call(new PointerType(new VoidType()), "odx", "get", "var@nonlocal", ""+(i*2+2));
 						out.proceed("set", name, ""+arrayIndex++, "odx");
-						out.call("odx", "get", "var@nonlocal", ""+(i*2+3));
+						out.call(new PointerType(new VoidType()), "odx", "get", "var@nonlocal", ""+(i*2+3));
 						out.proceed("set", name, ""+arrayIndex++, "odx");
 					}
 				}
 				
 				// tallennetaan paikalliset muuttujat
 				for (int i = 0; i < var.length; i++) {
-					out.call("odx", "&", "var@" + var[i].getKey());
+					out.call(new PointerType(new VoidType()), "odx", "&", "var@" + var[i].getKey());
 					out.proceed("set", name, ""+arrayIndex++, "odx");
 					out.proceed("set", name, ""+arrayIndex++, "var@" + var[i].getKey());
 				}
@@ -2537,7 +2612,7 @@ public class ProceedCompiler {
 		// typeof
 		if (t.type == Type.TYPEOF) {
 			if (name != null) {
-				out.set(name, getConstant(decltype(t.expr, inTry).toString()));
+				out.set(new PointerType(new IntegerType(Size.I8)), name, getConstant(decltype(t.expr, inTry).toString()));
 			}
 			warn(W_STRICT, decltype(t.expr, inTry).toString());
 			return TypeTree.getDefault(STR_TYPE);
@@ -2551,7 +2626,7 @@ public class ProceedCompiler {
 			} else size = Registers.REGISTER_SIZE;
 			
 			if (name != null) {
-				out.set(name, ""+size);
+				out.set(new IntegerType(Size.getSize(Registers.REGISTER_SIZE_BIT)), name, ""+size);
 			}
 			
 			return TypeTree.getDefault(INT_TYPE);
@@ -2566,21 +2641,23 @@ public class ProceedCompiler {
 			
 			// haetaan rakenteen koko
 			if (structures.containsKey(typeCast.name)) {
-				size = structures.get(typeCast.name).fields.size() * Registers.REGISTER_SIZE;
+				size = structures.get(typeCast.name).fields.size();
 			} else {
 				err(typeCast + " is not a valid structure type");
 				return TypeTree.getDefault(TMP_TYPE);
 			}
 			
 			if (name != null && functions.containsKey("alloc")) {
-				markExterns.add("function@alloc");
+				markExterns.add(new TypeName("function@alloc", new FunctionType(new PointerType(new VoidType()), new IntegerType(Size.LONG))));
 				
 				// luodaan uusi olio
-				out.call(name, "function@alloc", ""+size);
+				out.call(true, new IntegerType(Size.LONG), "_SV", "*", ""+size, "osize");
+				out.call(typeFromTree(typeCast), name, "function@alloc", "_SV");
 				
 				// kutsutaan newiä, jos sellainen on
 				if (functions.containsKey("method@" + typeCast.name + ".new")) {
-					if (allowPrinting) markExterns.add("function@method@" + typeCast.name + ".new");
+					if (allowPrinting) markExterns.add(new TypeName("function@method@" + typeCast.name + ".new",
+							new FunctionType(new IntegerType(Size.I8), typeFromTree(typeCast))));
 					
 					out.proceed("function@method@"+typeCast.name+".new", name);
 				}
@@ -2607,11 +2684,13 @@ public class ProceedCompiler {
 					|| expectedType.name.equals(LIST_TYPE))
 					&& expectedType.subtypes.size() != 0) type = expectedType.subtypes.get(0);
 			
-			markExterns.add("function@alloc");
+			markExterns.add(new TypeName("function@alloc", new FunctionType(new PointerType(new VoidType()), new IntegerType(Size.LONG))));
 			
-			if (name != null)
-				out.call(name, "function@alloc", ""+size*Registers.REGISTER_SIZE);
-			
+			if (name != null) {
+				out.call(true, new IntegerType(Size.LONG), "_SV", "*", ""+size, "osize");
+				out.call(new PointerType(typeFromTree(type)), name, "function@alloc", "_SV");
+			}
+				
 			int index = 0;
 			
 			/* Listatyypin ensimmäinen indeksi on koko */
@@ -2810,7 +2889,7 @@ public class ProceedCompiler {
 			break;
 		}
 		if (ftype.name.equals(CLOSURE_TYPE)) {
-			out.call("_FV", "get", funcName, "1");
+			out.call(new FunctionType(new PointerType(new VoidType())), "_FV", "get", funcName, "1");
 			func_hard_alias = "_FV";
 		}
 		
@@ -2863,7 +2942,9 @@ public class ProceedCompiler {
 		listedArguments.addAll(Arrays.asList(arguments));
 		
 		if (name != null) {
-			out.call(name.startsWith("_"), name, func_hard_alias, listedArguments.toArray(new String[listedArguments.size()]));
+			out.call(name.startsWith("_"), functions.containsKey(funcName) ? typeFromTree(functions.get(funcName).returnType)
+					: ftype.subtypes.size() != 0 ? typeFromTree(ftype.subtypes.get(0)) : new PointerType(new VoidType()),
+					name, func_hard_alias, listedArguments.toArray(new String[listedArguments.size()]));
 		}
 		else {
 			out.proceed(func_hard_alias, listedArguments.toArray(new String[listedArguments.size()]));
@@ -2986,14 +3067,21 @@ public class ProceedCompiler {
 		if (castable(t1, t2)) return true;
 		if (interfaces.containsKey(t1.name)) {
 			String fname = "method@" + t1.name + "." + "autocast@" + t2.toString().replaceAll(" ", "");
+			TypeTree ftype = TypeTree.getDefault(FUNC_TYPE, t2, t1);
 			if (functions.containsKey(fname)) {
 				if (name != null) {
 					if (functions.get(fname).alias != null) {
-						fname = "" + getIdent(functions.get(fname).alias, new ArrayList<TypeTree>(), TypeTree.getDefault(FUNC_TYPE, t2, t1)).value;
-					} else fname = getIdent(fname, t1.subtypes, TypeTree.getDefault(FUNC_TYPE, t2, t1)).value;
-					if (allowPrinting) markExterns.add("" + fname);
+						TypeValue tv = getIdent(functions.get(fname).alias, new ArrayList<TypeTree>(), TypeTree.getDefault(FUNC_TYPE, t2, t1));
+						fname = "" + tv.value;
+						ftype = tv.type;
+					} else {
+						TypeValue tv = getIdent(fname, t1.subtypes, TypeTree.getDefault(FUNC_TYPE, t2, t1));
+						fname = "" + tv.value;
+						ftype = tv.type;
+					}
+					if (allowPrinting) markExterns.add(new TypeName("" + fname, typeFromTree(ftype)));
 					
-					out.call(name, fname, name);
+					out.call(typeFromTree(t2), name, fname, name);
 				}
 				return true;
 			}
@@ -3039,13 +3127,28 @@ public class ProceedCompiler {
 		}
 	}
 	
+	enum TypeClass {
+		INTEGER,
+		FLOAT
+	}
+	
+	private static TypeClass getTypeClass(TypeTree a) {
+		switch (a.name) {
+		case FLOAT_TYPE:
+			return TypeClass.FLOAT;
+		default:
+			return TypeClass.INTEGER;
+		}
+	}
+	
 	public boolean manuallyCastable(TypeTree a, TypeTree b) {
 		if (a == null) a = TypeTree.getDefault(TOP_TYPE);
 		if (b == null) b = TypeTree.getDefault(TOP_TYPE);
 		
 		if (getWorth(a) == -1 || getWorth(b) == -1) return false;
-		if (getWorth(a) > getWorth(b)) return true;
-		if (a.name.equals(TOP_TYPE) || a.name.equals(NULL_TYPE)) return true;
+		if (getTypeClass(a) != getTypeClass(b)) return false;
+		if (getWorth(a) > getWorth(b) && getWorth(b) >= 0) return true;
+		if (getWorth(a) == 0 || a.name.equals(NULL_TYPE)) return true;
 		if (b.name.equals(NULL_TYPE)) return false;
 		
 		if (interfaces.containsKey(b.name)) {
@@ -3108,6 +3211,7 @@ public class ProceedCompiler {
 			return true;
 		}
 		
+		if (getTypeClass(a) != getTypeClass(b)) return false;
 		if (getWorth(a) == -1 || getWorth(b) == -1) return false;
 		if (getWorth(a) > getWorth(b)) return true;
 		

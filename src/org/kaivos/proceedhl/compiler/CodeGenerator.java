@@ -1,6 +1,11 @@
 package org.kaivos.proceedhl.compiler;
 
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.kaivos.proceedhl.compiler.type.Type;
+import org.kaivos.proceedhl.compiler.type.TypeName;
 
 public abstract class CodeGenerator {
 
@@ -14,49 +19,51 @@ public abstract class CodeGenerator {
 	}
 	
 	private final PrintWriter out;
-	private StringBuffer buffer = new StringBuffer();
+	private List<StringBuffer> buffers = new ArrayList<>();
+	private List<Integer> bufferIndentationLevels = new ArrayList<>();
 	
 	private boolean allowPrinting = true;
 	
-	private int indentation;
-	
 	public CodeGenerator(PrintWriter out) {
 		this.out = out;
+		buffers.add(new StringBuffer());
 	}
 	
-	public void incrementIndentationLevel() {
-		indentation++;
+	public void incrementIndentationLevel(int buffer) {
+		while (bufferIndentationLevels.size() <= buffer) bufferIndentationLevels.add(0);
+		bufferIndentationLevels.set(buffer, bufferIndentationLevels.get(buffer)+1);
 	}
 	
-	public void decrementIndentationLevel() {
-		indentation--;
+	public void decrementIndentationLevel(int buffer) {
+		while (bufferIndentationLevels.size() <= buffer) bufferIndentationLevels.add(0);
+		bufferIndentationLevels.set(buffer, bufferIndentationLevels.get(buffer)-1);
 	}
 	
-	private String indentation() {
+	private String indentation(int buffer) {
+		while (bufferIndentationLevels.size() <= buffer) bufferIndentationLevels.add(0);
+		
 		String i = "";
-		for (int j = 0; j < indentation; j++) i += "\t";
+		for (int j = 0; j < bufferIndentationLevels.get(buffer); j++) i += "\t";
 		return i;
 	}
 	
 	@Deprecated
-	public void print(String str) {
-		if (allowPrinting)
-			this.buffer.append(str);
-	}
-	
 	public void println(String str) {
-		if (allowPrinting)
-			this.buffer.append(indentation() + str + "\n");
+		println(0, str);
 	}
 	
-	@Deprecated
-	public void println() {
+	public void println(int buffer, String str) {
+		while (buffers.size() <= buffer) buffers.add(new StringBuffer());
 		if (allowPrinting)
-			this.buffer.append("\n");
+			this.buffers.get(buffer).append(indentation(buffer) + str + "\n");
 	}
 	
 	public void flush() {
-		this.out.print(buffer.toString());
+		int i = 0;
+		for (StringBuffer buffer : buffers) {
+			this.out.print(buffer.toString().trim());
+			this.out.println();
+		}
 		this.out.flush();
 	}
 	
@@ -64,48 +71,52 @@ public abstract class CodeGenerator {
 		this.allowPrinting = allowPrinting;
 	}
 	
+	public boolean getAllowPrinting() {
+		return allowPrinting;
+	}
+	
 	public abstract void startfile();
 	public abstract void endfile();
 	
 	public abstract void file(String path);
 	public abstract void stabs_typedef(String type, String def);
-	public abstract void type(String name);
+	public abstract void type(String name, Type type);
 	public abstract void var(String name, String type);
 	public abstract void line(int num);
 	public abstract void startblock();
 	public abstract void endblock();
 	
-	public abstract void staticvar(String name);
+	public abstract void staticvar(Type type, String name);
 	
-	public abstract void extern(String func);
-	public abstract void extern_pil(String func);
+	public abstract void extern(Type ftype, String func);
+	public abstract void extern_pil(Type ftype, String func);
 	
-	public abstract void function(boolean exportable, boolean argreg, String name, String... param);
+	public abstract void function(boolean exportable, boolean argreg, Type returnType, String name, TypeName... param);
 	public abstract void ret(String value);
 	public abstract void endfunction();
 	
-	public void set(String var, String val) {
-		set(false, var, val);
+	public void set(Type type, String var, String val) {
+		set(false, type, var, val);
 	}
-	public abstract void set(boolean alias, String var, String val);
+	public abstract void set(boolean alias, Type type, String var, String val);
 	
 	public abstract void setref(String var, String val);
-	public abstract void deref(String var, String ref);
+	public abstract void deref(Type type, String var, String ref);
 	
 	public abstract void store(String reg, String val);
 	public abstract void load(String reg, String var);
 	
 	public abstract void proceed(String function, String... args);
-	public void call(String var, String function, String... args) {
-		call(false, var, function, args);
+	public void call(Type type, String var, String function, String... args) {
+		call(false, type, var, function, args);
 	}
-	public abstract void call(boolean alias, String var, String function, String... args);
+	public abstract void call(boolean alias, Type type, String var, String function, String... args);
 	
 	public abstract void label(String name);
 	public abstract void go(String label);
 	public abstract void goif(PILCondition cond, String val1, String val2, String to);
 
-	public abstract void constant(String name, String value);
+	public abstract void stringConstant(String name, String value);
 	
 	/*** ÄLÄ KÄYTÄTÄ TÄTÄ!!! ***/
 	public abstract void pil(String code);
