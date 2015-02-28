@@ -29,7 +29,7 @@ public class FunctionType extends Type {
 	
 	@Override
 	public String toCString() {
-		return returnType.toCString() + "(*)(" + Arrays.asList(parameterTypes).stream().map(Type::toCString).collect(Collectors.joining(", ")) + ")";
+		return returnType.toCStringWithVariable("(*)(" + Arrays.asList(parameterTypes).stream().map(Type::toCString).collect(Collectors.joining(", ")) + ")");
 	}
 	
 	@Override

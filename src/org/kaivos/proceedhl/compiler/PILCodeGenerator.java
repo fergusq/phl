@@ -94,6 +94,17 @@ public class PILCodeGenerator extends CodeGenerator {
 	}
 
 	@Override
+	public void setfield(boolean alias, Type type, String var, String obj,
+			Type fieldtype, String field, String val) {
+		call(alias, type, var, "set", obj, field, val);
+	}
+	
+	@Override
+	public void setfield(String obj, Type fieldtype, String field, String val) {
+		proceed("set", obj, field, val);
+	}
+	
+	@Override
 	public void proceed(String function, String... args) {
 		println(MAIN_BUFFER, "proceed " + function + "(" + String.join(", ", args) + ")");
 	}

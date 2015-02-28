@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-
 import org.kaivos.proceedhl.compiler.ProceedCompiler;
 import org.kaivos.proceedhl.parser.NumberParser;
 import org.kaivos.proceedhl.parser.ProceedTree.FieldTree;
@@ -23,6 +22,11 @@ public class PHLHeaderCreator {
 		super();
 		this.out = docout;
 		this.out_html = docout_html;
+	}
+	
+	@SuppressWarnings("unused")
+	private static String demangle(String s) {
+		return null;
 	}
 
 	public void startDocument(String name) {
@@ -106,7 +110,7 @@ public class PHLHeaderCreator {
 	}
 	
 	public void endInterfaces() {
-		
+		//
 	}
 	
 	public void startStructs() {
@@ -249,7 +253,7 @@ public class PHLHeaderCreator {
 	}
 
 	public void endStructs() {
-		
+		//
 	}
 	
 	public void startFuncs() {
@@ -264,6 +268,13 @@ public class PHLHeaderCreator {
 	
 	private String headerFunc(FunctionTree t) {
 		String s = "";
+		
+		/*for (String flag : t.flags) {
+			if (t.flags1.containsKey(flag)) {
+				s += "#" + flag + "(" + t.flags1.get(flag).args.stream().collect(Collectors.joining(",")) + ")<br/>";
+			}
+			else s += "#" + flag + "<br/>";
+		}*/
 		
 		if (t.typeargs.size() != 0) {
 			s += ("<");
@@ -286,6 +297,8 @@ public class PHLHeaderCreator {
 			s += ("auto " + t.name.substring(9) + "");
 		} else if (t.name.startsWith("manualcast@")) {	// manualcast
 			s += ("manual " + t.name.substring(11) + "");
+		} else if (t.name.startsWith("modulef@")) {	// module method
+			s += ("module" + t.name.substring(t.name.indexOf(".")) + "");
 		} else if (t.name.startsWith("setfield@")) {	// setfield
 			s += (t.name.substring(9) + "=");
 		} else {	// normaali funktio/metodi
@@ -329,6 +342,8 @@ public class PHLHeaderCreator {
 			out_html.print("auto " + t1.name.substring(9));
 		} else if (t1.name.startsWith("manualcast@")) {	// manualcast
 			out_html.print("manual " + t1.name.substring(11));
+		} else if (t1.name.startsWith("modulef@")) {	// module method
+			out_html.print("module" + t1.name.substring(t1.name.indexOf(".")) + "");
 		} else if (t1.name.startsWith("setfield@")) {	// setfield
 			out_html.print(t1.name.substring(9) + "=");
 		} else {	// normaali funktio/metodi
@@ -380,6 +395,8 @@ public class PHLHeaderCreator {
 				name += ("auto " + t.name.substring(9) + "");
 			} else if (t.name.startsWith("manualcast@")) {	// manualcast
 				name += ("manual " + t.name.substring(11) + "");
+			} else if (t.name.startsWith("modulef@")) {	// module method
+				name += ("module" + t.name.substring(t.name.indexOf(".")) + "");
 			} else if (t.name.startsWith("setfield@")) {	// setfield
 				name += (t.name.substring(9) + "=");
 			} else {	// normaali funktio/metodi
@@ -404,7 +421,10 @@ public class PHLHeaderCreator {
 				}
 				else out_html.println("<p><b>This function is deprecated.</b></p>");
 			}
+			if (t.flags.contains("private")) out_html.println("<p><b>This function is private.</b></p>");
+			
 			if (t.flags.contains("modifies_this")) out_html.println("<p><b>This method modifies the <tt>this</tt> object.</b></p>");
+			if (t.flags.contains("unittest")) out_html.println("<p><b>This function is a unit test method.</b></p>");
 			
 			if (t.flags.contains("info") && t.flags1.get("info").args.size() > 0) {
 				String tmp = t.flags1.get("info").args.get(0);

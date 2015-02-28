@@ -103,6 +103,16 @@ public abstract class CodeGenerator {
 	public abstract void setref(String var, String val);
 	public abstract void deref(Type type, String var, String ref);
 	
+	public abstract void setfield(String obj, Type fieldtype, String field, String val);
+	
+	public void setfield(Type type, String var, String obj, Type fieldtype, String field, String val) {
+		setfield(false, type, var, obj, fieldtype, field, val);
+	}
+	public abstract void setfield(boolean alias, Type type, String var, String obj, Type fieldtype, String field, String val);
+	
+	// TODO alias
+	//public abstract void getfield(Type type, String var, String obj, Type fieldtype, String field);
+	
 	public abstract void store(String reg, String val);
 	public abstract void load(String reg, String var);
 	

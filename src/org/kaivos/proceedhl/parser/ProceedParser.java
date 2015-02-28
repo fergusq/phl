@@ -31,6 +31,8 @@ public class ProceedParser
 	private static boolean createDocs;
 	private static boolean compilePIL;
 	
+	public static boolean enableDebug;
+	
 	private static Map<String, Integer> argtypes = new HashMap<>();
 	static {
 		argtypes.put("h", 0);
@@ -51,8 +53,12 @@ public class ProceedParser
 		argtypes.put("plugins", 1);
 		
 		argtypes.put("arch", 1);
+		argtypes.put("target", 1);
 		
 		argtypes.put("W", 1);
+		argtypes.put("w", 0);
+		argtypes.put("g", 0);
+		
 	}
 	
 	private static Set<String> plugins = new HashSet<>();
@@ -93,23 +99,32 @@ public class ProceedParser
 		if (a.getFlag("h") != null || a.getFlag("help") != null)
 		{
 			System.out.println("Usage: java -cp phl.jar org.kaivos.proceedhl.parser.ProceedParser [OPTIONS] file\n| java -cp phl.jar org.kaivos.proceedhl.parser.ProceedParse [OPTIONS] -i");
-			System.out.println("Options:");
-			System.out.println("-i          read the source code from stdin instead of a file");
-			System.out.println("-d          print generated function lists files in 'docgen' dir");
-			System.out.println("--noattr    ignore function attributes in source code");
-			System.out.println("-W level    set warning level, can be all, strict, normal or critical");
-			System.out.println("--path p    search modules folder 'p'. multiple modules are separated with ':'");
-			System.out.println("--nostd     does not load the standard library");
-			System.out.println("-t          output only the main input file and compile and assemble it");
-			System.out.println("-o p        use 'p' as output folder");
-			System.out.println("--out p     use 'p' as output folder");
-			System.out.println("--arch t    set the arch. possibilities are: x86, amd64.");
-			System.out.println("-a          compile and assemble pil-files too");
-			System.out.println("--plugins p load plugin 'p'. multiple plugins are separated with ':'");
+			System.out.println("\nGeneral options:");
 			System.out.println("-v          print the version number");
 			System.out.println("--version   print the version number");
 			System.out.println("-h          print this text");
 			System.out.println("--help      print this text");
+			
+			System.out.println("\nInput options:");
+			System.out.println("-i          read the source code from stdin instead of a file");
+			System.out.println("--nostd     does not load the standard library");
+			System.out.println("--path p    search modules from folder 'p'. multiple folders are separated with ':'");
+			
+			System.out.println("\nOutput options:");
+			System.out.println("-a          compile and assemble pil-files too");
+			System.out.println("--arch t    set the arch. possibilities are: x86, amd64.");
+			System.out.println("-d          print generated function lists files in 'docgen' dir");
+			System.out.println("-o p        use 'p' as output folder");
+			System.out.println("--out p     use 'p' as output folder");
+			System.out.println("-t          output only the main input file and compile and assemble it");
+			System.out.println("--target t  set the target. possibilities are: pil, c.");
+			
+			System.out.println("\nCompiler options:");
+			System.out.println("-g          enable debug information");
+			System.out.println("--noattr    ignore function attributes in source code");
+			System.out.println("-W level    set warning level, can be all, strict, normal or critical");
+			System.out.println("-w          disable warnings");
+			System.out.println("--plugins p load plugin 'p'. multiple plugins are separated with ':'");
 			return;
 		}
 		
@@ -129,11 +144,23 @@ public class ProceedParser
 		if (a.getFlag("d") != null) {
 			createDocs = true;
 		}
+		if (a.getFlag("g") != null) {
+			enableDebug = true;
+		}
 		if (a.getFlag("noattr") != null) {
 			ProceedCompiler.useAttributes = false;
 		}
 		if (a.getFlag("nostd") != null) {
 			ProceedCompiler.useStdLib = false;
+		}
+		
+		if (a.getFlag("target") != null) {
+			String target = a.getFlag("target").getFlagArgument();
+			ProceedCompiler.target = (
+					target.equals("pil") ? ProceedCompiler.Target.PIL :
+					target.equals("c") ? ProceedCompiler.Target.C :
+					ProceedCompiler.Target.PIL
+					);
 		}
 		
 		if (a.getFlag("W") != null) {
@@ -145,6 +172,10 @@ public class ProceedParser
 					level.equals("critical") ? ProceedCompiler.W_CRITICAL :
 					ProceedCompiler.W_NORMAL
 					);
+		}
+		
+		if (a.getFlag("w") != null) {
+			ProceedCompiler.w_level = ProceedCompiler.W_STRICT;
 		}
 		
 		if (a.getFlag("a") != null) {
@@ -231,7 +262,7 @@ public class ProceedParser
 		s.setSpecialTokens(new char[] { ';', '<', '>', '(', ')', ',', ':', '+',
 				'-', '*', '/', '%', '=', '&', '|', '{', '}', '!', '[',
 				']', '$', '@', '#', '.', '?', '~', '^' });
-		s.setBSpecialTokens(new String[] { "~<", "->", "=>", "==", "!=", "&&", "||", "..",
+		s.setBSpecialTokens(new String[] { "~<", "->", "=>", "==", "!=", "&&", "||", "^^", "..",
 				"<=", ">=", "++", "--", "/*", "*/", "::", "<<", ">>", "~=", "?=", "**", ":=", ":-", "|>", "<|"});
 		s.setComments(new String[][] {{"doc", ";"}, {"/*", "*/"}});
 		s.setComments(false);
@@ -289,7 +320,7 @@ public class ProceedParser
 				System.err.println("; E: [" + e.getFile() + ":" + e.getLine()
 						+ "] Syntax error on token '" + e.getToken()
 						+ "', expected '" + e.getExcepted() + "'");
-				 //e.printStackTrace();
+				 e.printStackTrace();
 			} else {
 				System.err.println("; E: [" + e.getFile() + ":" + e.getLine()
 						+ "] Syntax error on token '" + e.getToken()
@@ -298,7 +329,7 @@ public class ProceedParser
 					System.err.println(";    [Line " + e.getLine() + "] \t\t'"
 							+ token + "'");
 				}
-				//e.printStackTrace();
+				e.printStackTrace();
 			}
 
 			System.err.println(";    [Line " + e.getLine() + "] Line: '"

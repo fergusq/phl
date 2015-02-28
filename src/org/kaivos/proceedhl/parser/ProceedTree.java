@@ -118,6 +118,14 @@ public class ProceedTree extends ParserTree {
 				accept(";", s);
 			}
 			while (!seek(s).equals("<EOF>")) {
+				/*System.out.println("---- PARSING LINE " + s.line()
+						+ "\nExpects: " + excepts
+						+ "\nImports: " + imports
+						+ "\nExterns: " + externs
+						+ "\nFunctions: " + functions
+						+ "\nInterfaces: " + interfaces
+						+ "\nStructs: " + structs
+						+ "\nStatics: " + statics);*/
 				if (seek(s).equals("doc")) {
 					while (!seek(s).equals(";")) next(s);
 					accept(";", s);
@@ -308,16 +316,15 @@ public class ProceedTree extends ParserTree {
 		}
 		
 		public String toBasic() {
-			String name = "" + this.name;
+			String basicName = "" + this.name;
 			if (subtypes.size() > 0) {
-				name += "@b";
-				for (int i = 0; i < subtypes.size(); i++) name += (i>0?"@s":"") + subtypes.get(i).toBasic();
+				basicName += "@" + subtypes.size();
+				for (int i = 0; i < subtypes.size(); i++) basicName += (i>0?"@":"") + subtypes.get(i).toBasic();
 				if (bonusType != null) {
-					name += "@x" + bonusType.toBasic();
+					basicName += "@0" + bonusType.toBasic();
 				}
-				name += "@e";
 			}
-			return name;
+			return basicName;
 		}
 		
 		public static TypeTree getDefault(String name) {
@@ -391,14 +398,22 @@ public class ProceedTree extends ParserTree {
 	
 	public static class Flag {
 		public String name;
-		public ArrayList<String> args = new ArrayList<>();
+		public List<String> args = new ArrayList<>();
 		public Flag() {}
 		public Flag(String...args) {
 			this.args.addAll(Arrays.asList(args));
 		}
+		
+		@Override
+		public boolean equals(Object obj) {
+			if (obj instanceof Flag) {
+				Flag flag = (Flag) obj;
+				return name.equals(flag.name) && args.equals(flag.args);
+			} else return false;
+		}
 	}
 	
-	public static void parseFlag(TokenScanner s, Set<String> flags, HashMap<String, Flag> flags1) throws SyntaxError {
+	public static Flag parseFlag(TokenScanner s) throws SyntaxError {
 		accept("#", s);
 		Flag flag = new Flag();
 		flag.name = nextI(s);
@@ -423,6 +438,11 @@ public class ProceedTree extends ParserTree {
 			}
 			accept(")", s);
 		}
+		return flag;
+	}
+	
+	public static void parseFlag(TokenScanner s, Set<String> flags, Map<String, Flag> flags1) throws SyntaxError {
+		Flag flag = parseFlag(s);
 		flags.add(flag.name);
 		flags1.put(flag.name, flag);
 	}
@@ -684,6 +704,9 @@ public class ProceedTree extends ParserTree {
 		public TypeTree data = TypeTree.getDefault(ProceedCompiler.UNIT_TYPE);
 		public boolean castable = false;
 		
+		public Set<String> flags = new HashSet<>();
+		public HashMap<String, Flag> flags1 = new HashMap<>();
+		
 		@Override
 		public void parse(TokenScanner s) throws SyntaxError {
 			accept("interface", s);
@@ -711,6 +734,11 @@ public class ProceedTree extends ParserTree {
 				data = new TypeTree();
 				data.parse(s);
 			}
+			
+			while (seek(s).equals("#")) {
+				parseFlag(s, flags, flags1);
+			}
+			
 			accept("{", s);
 			while (!seek(s).equals("}")) {
 				if (seek(s).equals("doc")) {
@@ -731,6 +759,9 @@ public class ProceedTree extends ParserTree {
 					t.template = template;
 					t.returnType = ftype;
 					t.name = level + "cast@" + ftype.toString().replaceAll(" ", "");
+					
+					t.flags.add(level + "cast");
+					t.flags1.put(level + "cast", new Flag());
 					
 					while (seek(s).equals("#")) {
 						parseFlag(s, t.flags, t.flags1);
@@ -782,6 +813,11 @@ public class ProceedTree extends ParserTree {
 		@Override
 		public ArrayList<String> typeargs() {
 			return typeargs;
+		}
+		
+		@Override
+		public String toString() {
+			return "interface @" + name;
 		}
 		
 	}
@@ -847,6 +883,9 @@ public class ProceedTree extends ParserTree {
 		@CompilerInfo
 		public ArrayList<FieldTree> fieldsOrg = new ArrayList<>();
 		
+		public Set<String> flags = new HashSet<>();
+		public HashMap<String, Flag> flags1 = new HashMap<>();
+		
 		public boolean isClass = false, isProtocol = false;
 		
 		@Override
@@ -894,6 +933,10 @@ public class ProceedTree extends ParserTree {
 				}
 				
 				accept(")", s);
+			}
+			
+			while (seek(s).equals("#")) {
+				parseFlag(s, flags, flags1);
 			}
 			
 			accept("{", s);
@@ -966,6 +1009,11 @@ public class ProceedTree extends ParserTree {
 					t.alias = null;
 					t.name = "new";
 					t.returnType = TypeTree.getDefault(ProceedCompiler.UNIT_TYPE);
+					
+					while (seek(s).equals("#")) {
+						parseFlag(s, t.flags, t.flags1);
+					}
+					
 					accept("[", s);
 					while (!seek(s).equals("]")) {
 						{
@@ -992,7 +1040,10 @@ public class ProceedTree extends ParserTree {
 					ftype.parse(s);
 					t.template = template;
 					t.returnType = ftype;
-					t.name = level + "cast@" + ftype.toString().replaceAll(" ", "");
+					t.name = level + "cast@" + ftype.toBasic();
+					
+					t.flags.add(level + "cast");
+					t.flags1.put(level + "cast", new Flag());
 					
 					while (seek(s).equals("#")) {
 						parseFlag(s, t.flags, t.flags1);
@@ -1051,6 +1102,11 @@ public class ProceedTree extends ParserTree {
 			return typeargs;
 		}
 		
+		@Override
+		public String toString() {
+			return (isClass?"class @":"struct @") + name;
+		}
+		
 	}
 	
 	/**
@@ -1066,7 +1122,12 @@ public class ProceedTree extends ParserTree {
 		public boolean vardef = false;
 		
 		public enum StaticCondition {
-			EQUALS_TYPE
+			EQUALS_TYPE,
+			CASTABLE,
+			MANUALLY_CASTABLE,
+			IS_STRUCT,
+			IS_CLASS,
+			HAS_ATTRIBUTE
 		}
 		
 		public enum StaticCommand {
@@ -1077,6 +1138,8 @@ public class ProceedTree extends ParserTree {
 		public StaticCondition cond;
 		public StaticCommand command;
 		public String message;
+		public Flag flag;
+		public boolean inverseCond;
 		
 		public String var;
 		public ExpressionTree expr;
@@ -1128,7 +1191,9 @@ public class ProceedTree extends ParserTree {
 				if (seek(s).equals("if")) {
 					accept("if", s);
 					type = Type.STATIC_IF;
-					switch (accept(new String[] {"__equals_type"}, s)) {
+					cond = null;
+					switch (accept(new String[] {"__equals_type", "__castable", "__manually_castable",
+							"__is_struct", "__is_class", "__has__attribute"}, s)) {
 					case "__equals_type":
 						cond = StaticCondition.EQUALS_TYPE;
 						accept("(", s);
@@ -1139,8 +1204,45 @@ public class ProceedTree extends ParserTree {
 						typedef2.parse(s);
 						accept(")", s);
 						break;
+					case "__castable":
+						cond = StaticCondition.CASTABLE;
+					case "__manually_castable":
+						if (cond == null)
+							cond = StaticCondition.MANUALLY_CASTABLE;
+						accept("(", s);
+						typedef = new TypeTree();
+						typedef.parse(s);
+						accept(",", s);
+						typedef2 = new TypeTree();
+						typedef2.parse(s);
+						accept(")", s);
+						break;
+					case "__has_attribute":
+						cond = StaticCondition.HAS_ATTRIBUTE;
+						accept("(", s);
+						typedef = new TypeTree();
+						typedef.parse(s);
+						accept(",", s);
+						accept("#", s);
+						flag = parseFlag(s);
+						accept(")", s);
+						break;
+					case "__is_struct":
+						cond = StaticCondition.IS_STRUCT;
+					case "__is_class":
+						if (cond == null)
+							cond = StaticCondition.IS_CLASS;
+						accept("(", s);
+						typedef = new TypeTree();
+						typedef.parse(s);
+						accept(")", s);
 					default:
 						break;
+					}
+					
+					if (seek(s).equals("~")) {
+						accept("~", s);
+						inverseCond = true;
 					}
 					
 					block = new LineTree();
@@ -1347,6 +1449,7 @@ public class ProceedTree extends ParserTree {
 			"<", ">", "<=", ">=",
 			"==", "!=",
 			"and", "&&",
+			"xor", "^^",
 			"or", "||",
 			"->", "=>",
 			"/[a-zäöå][a-zA-ZÄÖÅäöå0-9_]*/",
@@ -1371,6 +1474,7 @@ public class ProceedTree extends ParserTree {
 			"<", ">", "<=", ">=",
 			"==", "!=",
 			"and", "&&",
+			"xor", "^^",
 			"or", "||",
 			"->", "=>",
 			"/[a-zäöå][a-zA-ZÄÖÅäöå0-9_]*/",
@@ -1385,6 +1489,7 @@ public class ProceedTree extends ParserTree {
 			{"/[a-zäöå][a-zA-ZÄÖÅäöå0-9_]*/"},
 			{"->", "=>"},
 			{"or", "||"},
+			{"xor", "^^"},
 			{"and", "&&"},
 			{"==", "!="},
 			{"<", ">", "<=", ">="},
@@ -2006,8 +2111,15 @@ public class ProceedTree extends ParserTree {
 			}
 			boolean forceMethodCall = false;
 			{
-				if (seek(s).matches("[\\+\\-]?[0-9]*")) {
+				if (seek(s).matches("[\\+\\-]?[0-9]*f?")) {
 					var = next(s);
+					if (!var.endsWith("f") && seek(s).equals(".")) {
+						accept(".", s);
+						var += ".";
+						if (seek(s).matches("[0-9]*f?")) {
+							var += next(s);
+						}
+					}
 				} else if (seek(s).matches("0x[0-9a-fA-F]*")) {
 					var = next(s);
 				} else if (seek(s).matches("0b[0-1]*")) {

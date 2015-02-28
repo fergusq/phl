@@ -61,7 +61,7 @@ public class ProceedCompiler {
 	public static final String OBJ_TYPE = "Object";
 	
 	public static final String INT_TYPE = "Integer";
-	public static final String FLOAT_TYPE = "Decimal";
+	public static final String FLOAT_TYPE = "Float";
 	
 	public static final String BOOL_TYPE = "Boolean";
 	public static final String STR_TYPE = "String";
@@ -113,7 +113,6 @@ public class ProceedCompiler {
 	
 	public Set<String> imports = new HashSet<>();
 	
-	
 	/**
 	 * Kaikki funktiot, joita kutsutaan jostain, lisätään tähän,
 	 * ja lopuksi nämä lisätään outputtiin riippuvaisuuksiksi
@@ -150,6 +149,10 @@ public class ProceedCompiler {
 	 * Jos out on null, ei ole ulostuloa
 	 */
 	public static boolean nullOut = false;
+	
+	public enum Target { PIL, C }
+	
+	public static Target target;
 	
 	public ProceedCompiler(String module, boolean createDocs) {
 		this.createDocs  = createDocs;
@@ -188,10 +191,12 @@ public class ProceedCompiler {
 		if (!tree.module.isEmpty()) {
 			currModuleFile = tree.module.replace("::", "/") + ".phl";
 			currModule = tree.module;
-			if (out1 != null || nullOut) out = new PILCodeGenerator(out1);
+			if (out1 != null || nullOut) out = target == Target.PIL ? new PILCodeGenerator(out1) : new CCodeGenerator(out1);
 			else try {
-				//out = new PILCodeGenerator(new PrintWriter(outputPath + tree.module.replace("::", "_") + ".pil"));
-				out = new CCodeGenerator(new PrintWriter(outputPath + tree.module.replace("::", "_") + ".c"));
+				if (target == Target.PIL)
+					out = new PILCodeGenerator(new PrintWriter(outputPath + tree.module.replace("::", "_") + ".pil"));
+				else
+					out = new CCodeGenerator(new PrintWriter(outputPath + tree.module.replace("::", "_") + ".c"));
 			} catch (FileNotFoundException e) {
 				e.printStackTrace();
 			}
@@ -242,13 +247,20 @@ public class ProceedCompiler {
 		
 		ArrayList<String> privateFunctions = new ArrayList<>();
 		
-		HashSet<String> onloads = new HashSet<>();
+		/** Funktiot, joita kutsutaan main-funktion alussa */
+		List<String>[] onloads = new ArrayList[2];
+		for (int i = 0; i < 2; i++) onloads[i] = new ArrayList<>();
 		
 		for (String s : functions.keySet()) {
 			privateFunctions.add(s);
 			if (s.startsWith("modulef@")) {
 				if (s.matches("modulef@([a-z]\\d.*)*\\.onload")) {
-					onloads.add("function@" + s);
+					onloads[0].add("function@" + s);
+				}
+				if (functions.get(s).flags.contains("unittest") && ProceedParser.enableDebug) {
+					onloads[
+					        functions.get(s).flags.contains("loadLast") ? 1 : 0
+					        ].add("function@" + s);
 				}
 			}
 		}
@@ -301,6 +313,12 @@ public class ProceedCompiler {
 			externs.put(s.getKey(), s.getValue());
 		}
 		
+		/* Debug-tietoja: tiedoston nimi */
+		{
+			File f = new File(file);
+			out.file(f.getAbsolutePath());
+		}
+		
 		out.startfile();
 		
 		out.extern(new FunctionType(new PointerType(new VoidType()), new VoidType()), "GC_init");
@@ -311,9 +329,10 @@ public class ProceedCompiler {
 		
 		if (createDocs) documentator.startStatics();
 		
+		// Staattiset muuttujat rekisteröidään tässä, mutta syötetään ulostuloon vasta myöhemmin,
+		// koska tyyppejä ei ole tässä vaiheessa vielä rekisteröity
 		for (Entry<String, TypeTree> s : tree.statics.entrySet()) {
 			statics.put(s.getKey(), s.getValue());
-			out.staticvar(typeFromTree(s.getValue()), "static@" + s.getKey());
 			if (createDocs) documentator.docStatic(s.getKey(), s.getValue());
 		}
 		
@@ -324,6 +343,7 @@ public class ProceedCompiler {
 			documentator.startFuncs();
 		}
 		
+		// Lisää funktiot listaan ja manglaa tyyppiparametrit
 		for (FunctionTree t : tree.functions) {
 			if (createDocs) documentator.docFunc(t);
 			if (!functions.containsKey(t.name)) {
@@ -343,9 +363,11 @@ public class ProceedCompiler {
 			out.function(true, false, new IntegerType(Size.I32),
 					"main", new TypeName("argc", new IntegerType(Size.I32)), new TypeName("argv", new ArrayType(new PointerType(new IntegerType(Size.I8)))));
 			out.proceed("GC_init");
-			for (String s : onloads) {
-				out.proceed(s);
-				markExterns.add(new TypeName(s, new FunctionType(new PointerType(new VoidType()))));
+			for (List<String> onloadl : onloads) {
+				for (String s : onloadl) {
+					out.proceed(s);
+					markExterns.add(new TypeName(s, new FunctionType(new PointerType(new VoidType()))));
+				}
 			}
 			out.proceed("function@main", "var@argc", "var@argv");
 			out.endfunction();
@@ -384,6 +406,8 @@ public class ProceedCompiler {
 			i.functions = t.functions;
 			i.typeargs = t.typeargs;
 			i.module = t.module;
+			i.flags = t.flags;
+			i.flags1 = t.flags1;
 			
 			for (int j = 0; j < i.typeargs.size(); j++) {
 				i.typeargs.set(j, "i" + i.name + ":" + i.typeargs.get(j));
@@ -840,6 +864,9 @@ public class ProceedCompiler {
 					functions.put(t1.name, t1);
 				}
 			}
+			
+			// Lisää kaikki "tavalliset" metodit listaan
+			// Antaja-, asettaja- ja virtuaaliset metodit ym. on lisätty aiemmin (yleensä heti niiden luonnin jälkeen)
 			for (int i = 0; i < t.functions.size(); i++) {
 				FunctionTree t1 = t.functions.get(i);
 				/*t1.params.add(0, "this");
@@ -924,6 +951,11 @@ public class ProceedCompiler {
 			}
 		}
 		
+		/* Staattiset muuttujat */
+		for (Entry<String, TypeTree> e : tree.statics.entrySet()) {
+			out.staticvar(typeFromTree(e.getValue()), "static@" + e.getKey());
+		}
+		
 		/* Funktiot */
 		for (int i = 0; i < funcs.size(); i++) {
 			
@@ -941,15 +973,10 @@ public class ProceedCompiler {
 			}
 			else if (privateExterns.contains(s))
 				out.extern(ts.getType(), s);
-			
-			out.extern(ts.getType(), s);
 		}
 		
 		/* Debug-tiedot */
 		{
-			File f = new File(file);
-			out.file(f.getAbsolutePath());
-			
 			uniqueListFreeze = true;
 			
 			for (int i = 0; i < uniqueTypes.size(); i++) {
@@ -1023,19 +1050,17 @@ public class ProceedCompiler {
 		case INT_TYPE:
 			return new IntegerType(Size.LONG);
 		case FLOAT_TYPE:
-			return new FloatType(FloatType.Size.DOUBLE);
+			return new FloatType(FloatType.Size.ARCH);
 		case BOOL_TYPE:
 			return new IntegerType(Size.LONG);
 		case STR_TYPE:
-			return new PointerType(new IntegerType(Size.I8));
+			return new PointerType(new IntegerType(Size.I8), true);
 		case PTR_TYPE:
 			if (t.subtypes.size() > 0)
 				return new PointerType(typeFromTree(t.subtypes.get(0)));
 			return new PointerType(new VoidType());
 		case LIST_TYPE:
 			return new PointerType(new VoidType());
-		case OBJ_TYPE:
-			return new ReferenceType(t.name);
 		case NULL_TYPE:
 		case UNIT_TYPE:
 			return new IntegerType(Size.I8);
@@ -1045,6 +1070,7 @@ public class ProceedCompiler {
 		case EXT_FUNC_TYPE:
 			if (t.subtypes.size() > 0)
 				return new FunctionType(typeFromTree(t.subtypes.get(0)), t.subtypes.stream().skip(1).map(t_ -> typeFromTree(t_)).collect(Collectors.toList()));
+		case OBJ_TYPE:
 		default:
 			if (structures.containsKey(t.name))
 				return new ReferenceType(t.name);
@@ -1070,6 +1096,11 @@ public class ProceedCompiler {
 		ArrayList<FieldTree> fields2 = new ArrayList<>();
 		
 		StructTree t = structures.get(superType.name);
+		
+		if (t.flags.contains("final")) {
+			err("Invalid super structure: can't inherit final structure " + superType);
+		}
+		
 		if (!t.superType.name.equals(TOP_TYPE)) {
 			superTypes.push(superType.name);
 			addSuperFields(currStruct, t.superType, fields2);
@@ -1309,7 +1340,7 @@ public class ProceedCompiler {
 		if (tree.alias != null) {
 			String alias = getIdent(tree.alias, new ArrayList<TypeTree>(), null).value;
 			if (functions.containsKey(alias) && functions.get(alias).throwsEx && !tree.throwsEx) {
-				err("Invalid alias declaration: " + tree.name + " need to be declared with throws ex modifier!");
+				err("Invalid alias declaration: " + tree.name + " need to be declared with throws ex modifier");
 			}
 			return;
 		}
@@ -1641,6 +1672,7 @@ public class ProceedCompiler {
 				
 				vars.put(t.var, TypeTree.getDefault(EXCEPTION_TYPE)); // Virhemuuttuja
 				
+				out.set(typeFromTree(TypeTree.getDefault(EXCEPTION_TYPE)), "var@"+t.var, "0");
 				out.load("var@"+t.var, "ocx"); // Exception-muuttuja on CX:ssä
 				out.store("obx", "0");         // Resetoi BX
 				out.store("ocx", "0");         // Resetoi CX
@@ -1674,6 +1706,28 @@ public class ProceedCompiler {
 					cond = changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges)
 							.equals(changeTemplateTypes(checkTypeargs(t.typedef2), currFunc.templateChanges));
 				}
+				else if (t.cond == StaticCondition.CASTABLE) {
+					cond = castable(changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges),
+							changeTemplateTypes(checkTypeargs(t.typedef2), currFunc.templateChanges));
+				}
+				else if (t.cond == StaticCondition.MANUALLY_CASTABLE) {
+					cond = manuallyCastable(changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges),
+							changeTemplateTypes(checkTypeargs(t.typedef2), currFunc.templateChanges));
+				}
+				else if (t.cond == StaticCondition.IS_STRUCT) {
+					cond = structures.containsKey(changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges).name);
+				}
+				else if (t.cond == StaticCondition.IS_CLASS) {
+					TypeTree tt = changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges);
+					cond = structures.containsKey(tt.name) && structures.get(tt.name).isClass;
+				}
+				else if (t.cond == StaticCondition.HAS_ATTRIBUTE) {
+					TypeTree tt = changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges);
+					cond = interfaces.containsKey(tt.name) && (interfaces.get(tt.name).flags1.containsValue(t.flag)
+							|| t.flag.args.size() == 0 && interfaces.get(tt.name).flags.contains(t.flag.name));
+				}
+				
+				if (t.inverseCond) cond = !cond;
 				
 				if (cond)
 					compileLine(t.block, inTry);
@@ -1895,6 +1949,8 @@ public class ProceedCompiler {
 			return new TypeValue(NumberParser.parseHex(ident) + "", TypeTree.getDefault(INT_TYPE));
 		} else if (ident.startsWith("0b")) {
 			return new TypeValue(NumberParser.parseBin(ident) + "", TypeTree.getDefault(INT_TYPE));
+		} else if (ident.matches("[0-9]+((\\.[0-9]*f?)|f)|\\.[0-9]+f?")) {
+			return new TypeValue(Double.parseDouble(ident.replaceAll("f$", "")) + "", TypeTree.getDefault(FLOAT_TYPE));
 		} else {
 			try {
 				return new TypeValue(Integer.parseInt(ident) + "", TypeTree.getDefault(INT_TYPE));
@@ -2001,7 +2057,9 @@ public class ProceedCompiler {
 				warn(W_NORMAL, "Function " + ident + " is deprecated");
 			}
 			
-			if (useAttributes && functions.get(ident).flags.contains("private") && !functions.get(ident).module.equals(currModule)) {
+			if (useAttributes && (functions.get(ident).flags.contains("private") && !functions.get(ident).module.equals(currModule)
+					|| functions.get(ident).flags.contains("restrict") && functions.get(ident).flags1.get("restrict").args.size() > 0
+					&& currFunc.flags.contains(functions.get(ident).flags1.get("restrict").args.get(0)))) {
 				err("Function " + ident + " is not visible");
 			}
 			
@@ -2246,7 +2304,9 @@ public class ProceedCompiler {
 						warn(W_NORMAL, "Method " + demangle(t.method)+ " is deprecated");
 					}
 					
-					if (useAttributes && t1.flags.contains("private") && !t1.module.equals(currModule)) {
+					if (useAttributes && (t1.flags.contains("private") && !t1.module.equals(currModule)
+							|| t1.flags.contains("restrict") && t1.flags1.get("restrict").args.size() > 0
+							&& currFunc.flags.contains(t1.flags1.get("restrict").args.get(0)))) {
 						err("Method " + tt.name + "." + demangle(t.method) + " is not visible");
 						// Jatka virheiden etsintää
 					}
@@ -2399,12 +2459,12 @@ public class ProceedCompiler {
 			if (name != null) {
 				TypeTree a = compileExpression(t.expr, name, typeCast, inTry); // TODO laskua ei tehdä jos ei tarvetta?
 				if (interfaces.containsKey(a.name)) {
-					String fname = "method@" + a.name + "." + "manualcast@" + typeCast.toString().replaceAll(" ", "");
+					String fname = findCast(a, typeCast, "manualcast");
 					boolean found = false;
-					if (functions.containsKey(fname)) {
+					if (fname != null && functions.containsKey(fname)) {
 						found = true;
 					} else {
-						fname = "method@" + a.name + "." + "autocast@" + typeCast.toString().replaceAll(" ", "");
+						fname = findCast(a, typeCast, "autocast");
 						if (functions.containsKey(fname)) {
 							found = true;
 						}
@@ -2547,6 +2607,22 @@ public class ProceedCompiler {
 				markExterns.add(new TypeName("set", new FunctionType(new PointerType(new VoidType()))));
 			}
 			
+			// kasaa tietotyypin
+			ArrayList<TypeTree> subtypes = new ArrayList<>();
+			subtypes.add(checkTypeargs(t1.returnType));
+			for (int i = 0; i < t1.paramtypes.size(); i++) subtypes.add(checkTypeargs(t1.paramtypes.get(i)));
+			
+			TypeTree typeFunc = TypeTree.getDefault(FUNC_TYPE, subtypes
+					.toArray(new TypeTree[subtypes.size()]));
+			
+			// ensimmäinen parametri on closure-olio itse (nonlocal). sitä ei oteta laskuihin @Closure-tyypissä
+			subtypes = new ArrayList<>();
+			subtypes.add(checkTypeargs(t1.returnType));
+			for (int i = 1; i < t1.paramtypes.size(); i++) subtypes.add(checkTypeargs(t1.paramtypes.get(i)));
+				
+			TypeTree typeClosure = TypeTree.getDefault(CLOSURE_TYPE, subtypes
+					.toArray(new TypeTree[subtypes.size()]));
+			
 			if (name != null && functions.containsKey("alloc"))  {
 				
 				// tallennetaan määrittely-ympäristö
@@ -2563,26 +2639,35 @@ public class ProceedCompiler {
 				out.call(new PointerType(new VoidType()), name, "function@alloc", "_SV");
 				
 				// tallennetaan viittaus funktioon
-				out.proceed("set", name, "0", ""+size);
-				out.proceed("set", name, "1", "function@"+t1.name);
+				out.setfield(name, new IntegerType(Size.LONG), "0", ""+size);
+				out.setfield(name, typeFromTree(typeFunc), "1", "function@"+t1.name);
 				
 				int arrayIndex = 2;
 				
 				// tallennetaan nykyiset nonlocalit
 				if (currFunc != null && currFunc.nonlocal != null) {
 					for (int i = 0; i < currFunc.nonlocal.size(); i++) {
-						out.call(new PointerType(new VoidType()), "odx", "get", "var@nonlocal", ""+(i*2+2));
-						out.proceed("set", name, ""+arrayIndex++, "odx");
-						out.call(new PointerType(new VoidType()), "odx", "get", "var@nonlocal", ""+(i*2+3));
-						out.proceed("set", name, ""+arrayIndex++, "odx");
+						// ensimmäisenä vuorossa on viittaus
+						out.call(new PointerType(typeFromTree(currFunc.nonlocal.get(i).type)),
+								"odx", "get", "var@nonlocal", ""+(i*2+2));
+						out.setfield(name,
+								new PointerType(typeFromTree(currFunc.nonlocal.get(i).type)),
+								""+arrayIndex++, "odx");
+						
+						// sitten säilöttynä muuttujan alkuperäinen arvo
+						out.call(typeFromTree(currFunc.nonlocal.get(i).type), "odx", "get", "var@nonlocal", ""+(i*2+3));
+						out.setfield(name, typeFromTree(currFunc.nonlocal.get(i).type), ""+arrayIndex++, "odx");
 					}
 				}
 				
 				// tallennetaan paikalliset muuttujat
 				for (int i = 0; i < var.length; i++) {
+					// säilötään viittaus
 					out.call(new PointerType(new VoidType()), "odx", "&", "var@" + var[i].getKey());
-					out.proceed("set", name, ""+arrayIndex++, "odx");
-					out.proceed("set", name, ""+arrayIndex++, "var@" + var[i].getKey());
+					out.setfield(name, new PointerType(typeFromTree(var[i].getValue())), ""+arrayIndex++, "odx");
+					
+					// säilötään nykyinen arvo
+					out.setfield(name, typeFromTree(var[i].getValue()), ""+arrayIndex++, "var@" + var[i].getKey());
 				}
 				
 				//println(")");
@@ -2593,14 +2678,8 @@ public class ProceedCompiler {
 				getIdent("set", new ArrayList<TypeTree>(), null);
 			}
 			
-			// kasaa tietotyypin
-			ArrayList<TypeTree> subtypes = new ArrayList<>();
-			subtypes.add(checkTypeargs(t1.returnType));
-			for (int i = 1; i < t1.paramtypes.size(); i++) subtypes.add(checkTypeargs(t1.paramtypes.get(i)));
-			
 			// palauttaa halutun tyypin
-			return TypeTree.getDefault(CLOSURE_TYPE, subtypes
-					.toArray(new TypeTree[subtypes.size()]));
+			return typeClosure;
 		}
 		
 		// Typerä wrapperi metodikutsulle
@@ -2695,7 +2774,7 @@ public class ProceedCompiler {
 			
 			/* Listatyypin ensimmäinen indeksi on koko */
 			if (name != null && expectedType.name.equals(LIST_TYPE))
-				out.proceed("set", name, ""+index++, ""+size);
+				out.setfield(name, new IntegerType(Size.LONG), ""+index++, ""+size);
 			
 			/* Aseta arvot listaan */
 			
@@ -2709,7 +2788,7 @@ public class ProceedCompiler {
 					err("Invalid list element " + i + ": can't cast from " + element_type + " to " + type);
 				
 				if (name != null)
-					out.proceed("set", name, ""+index++, tmp_name);
+					out.setfield(name, typeFromTree(type), ""+index++, tmp_name);
 			}
 			
 			return expectedType.name.equals(LIST_TYPE) ? TypeTree.getDefault(LIST_TYPE, type) : TypeTree.getDefault(PTR_TYPE, type);
@@ -3054,6 +3133,29 @@ public class ProceedCompiler {
 		return newType;
 	}
 	
+	private String findCast(TypeTree t1, TypeTree t2, String level) throws CompilerError {
+		String fname = null;
+		if (interfaces.containsKey(t1.name)) {
+			int steps = Integer.MAX_VALUE;
+			for (FunctionTree ft : interfaces.get(t1.name).functions) {
+				int tmpSteps = -1;
+				TypeTree fixed = fixTypeargs(ft.returnType, t1, interfaces.get(t1.name));
+				if ((ft.name.startsWith("method@" + t1.name + "." + level + "@") || ft.name.startsWith(level + "@")) 	// TODO selvitä miksi struct-metodien nimet
+																														// eivät ole manglattuja
+						&& fixed.name.equals(t2.name)
+						&& (tmpSteps=castSteps(fixed, t2)) != -1) {
+					if (steps > tmpSteps) {
+						fname = (!ft.name.startsWith("method@") ? "method@" + t1.name + ".":"") + ft.name;
+						steps = tmpSteps;
+					}
+					if (steps == 1) break;
+				}
+			}
+		}
+		
+		return fname;
+	}
+	
 	/**
 	 * Muunna tyyppiä t1 oleva arvo tyyppiin t2 ja sijoita lopputulos muuttujaan
 	 * 
@@ -3066,7 +3168,7 @@ public class ProceedCompiler {
 	private boolean doCasts(TypeTree t1, TypeTree t2, String name) throws CompilerError {
 		if (castable(t1, t2)) return true;
 		if (interfaces.containsKey(t1.name)) {
-			String fname = "method@" + t1.name + "." + "autocast@" + t2.toString().replaceAll(" ", "");
+			String fname = findCast(t1, t2, "autocast");
 			TypeTree ftype = TypeTree.getDefault(FUNC_TYPE, t2, t1);
 			if (functions.containsKey(fname)) {
 				if (name != null) {
@@ -3128,8 +3230,14 @@ public class ProceedCompiler {
 	}
 	
 	enum TypeClass {
-		INTEGER,
-		FLOAT
+		INTEGER(0),
+		FLOAT(1);
+		
+		int s;
+		
+		private TypeClass(int s) {
+			this.s = s;
+		}
 	}
 	
 	private static TypeClass getTypeClass(TypeTree a) {
@@ -3146,7 +3254,7 @@ public class ProceedCompiler {
 		if (b == null) b = TypeTree.getDefault(TOP_TYPE);
 		
 		if (getWorth(a) == -1 || getWorth(b) == -1) return false;
-		if (getTypeClass(a) != getTypeClass(b)) return false;
+		if (getTypeClass(a).s > getTypeClass(b).s) return false;
 		if (getWorth(a) > getWorth(b) && getWorth(b) >= 0) return true;
 		if (getWorth(a) == 0 || a.name.equals(NULL_TYPE)) return true;
 		if (b.name.equals(NULL_TYPE)) return false;
@@ -3173,7 +3281,7 @@ public class ProceedCompiler {
 			for (int i = 0; i < a.subtypes.size(); i++)
 				if (!manuallyCastable(a.subtypes.get(i), b.subtypes.get(i))) return false;
 			
-			if (!manuallyCastable(a.bonusType, b.bonusType))return false;
+			if (!manuallyCastable(a.bonusType, b.bonusType)) return false;
 			return true;
 		}
 		return false;
@@ -3183,6 +3291,8 @@ public class ProceedCompiler {
 	public boolean castable(TypeTree a, TypeTree b) {
 		if (a == null) a = TypeTree.getDefault(TOP_TYPE);
 		if (b == null) b = TypeTree.getDefault(TOP_TYPE);
+		
+		if (getTypeClass(a).s > getTypeClass(b).s) return false;
 		
 		if (interfaces.containsKey(a.name) && interfaces.get(a.name).castable) {
 			if (castable(interfaces.get(a.name).data, b)) return true;
@@ -3200,7 +3310,7 @@ public class ProceedCompiler {
 		
 		if (a.toString().equals(b.toString())) return true;
 		else if (a.name.equals(b.name)) {
-			if (a.subtypes.size() != b.subtypes.size()) return a.subtypes.size() == 0;
+			if (a.subtypes.size() != b.subtypes.size()) return b.subtypes.size() == 0;
 			for (int i = 0; i < a.subtypes.size(); i++)
 				if (!castable(a.subtypes.get(i), b.subtypes.get(i))) {
 					return false;
@@ -3211,11 +3321,31 @@ public class ProceedCompiler {
 			return true;
 		}
 		
-		if (getTypeClass(a) != getTypeClass(b)) return false;
 		if (getWorth(a) == -1 || getWorth(b) == -1) return false;
 		if (getWorth(a) > getWorth(b)) return true;
 		
 		return false;
+	}
+	
+	/** Arvio, kuinka tarkka tyyppimuunnos on. Suurempi luku, epätarkempi muunnos. Esim. Integer -> Pointer -> String == 3 **/
+	public int castSteps(TypeTree a, TypeTree b) {
+		if (!castable(a, b)) return -1;
+		
+		if (interfaces.containsKey(a.name) && interfaces.get(a.name).castable) {
+			int steps = castSteps(interfaces.get(a.name).data, b);
+			if (steps > -1) return steps + 1;
+		}
+		if (interfaces.containsKey(b.name) && interfaces.get(b.name).castable) {
+			int steps = castSteps(a, interfaces.get(b.name).data)+1;
+			if (steps > -1) return steps + 1;
+		}
+		
+		if (structures.containsKey(a.name) && !structures.get(a.name).superType.equals(TOP_TYPE)) {
+			int steps = castSteps((structures.get(a.name).superType), b)+1;
+			if (steps > -1) return steps + 1;
+		}
+		
+		return 1;
 	}
 
 }

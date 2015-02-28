@@ -8,6 +8,8 @@ VERSIO 1.2.7 == Uutta:
 	- '~'-operaattori
 	- Käännöksenaikaiset ehtorakenteet static if -konstruktiolla
 	- Käännöksenaikaiset varoitukset ja virheet
+	- '^^'- ja xor-operaattorit
+	- Rajapintojen, rakenteiden ja luokkien attribuutit
 
 	PROCEED HIGH LANGUAGE (PHL)
 	VERSIO 1.2.6

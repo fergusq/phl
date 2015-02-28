@@ -9,13 +9,16 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
+import org.kaivos.proceed.compiler.Registers;
 import org.kaivos.proceedhl.compiler.type.FunctionType;
 import org.kaivos.proceedhl.compiler.type.IntegerType;
 import org.kaivos.proceedhl.compiler.type.IntegerType.Size;
+import org.kaivos.proceedhl.compiler.type.FloatType;
 import org.kaivos.proceedhl.compiler.type.PointerType;
 import org.kaivos.proceedhl.compiler.type.Type;
 import org.kaivos.proceedhl.compiler.type.TypeName;
 import org.kaivos.proceedhl.compiler.type.VoidType;
+import org.kaivos.proceedhl.parser.ProceedParser;
 
 public class CCodeGenerator extends CodeGenerator {
 
@@ -45,6 +48,8 @@ public class CCodeGenerator extends CodeGenerator {
 	}
 	
 	private static String censor_(String name) {
+		if (name.matches("[0-9]+\\.[0-9]*|\\.[0-9]+")) return name;
+		
 		String censored = org.kaivos.proceed.compiler.ProceedCompiler.censor2(name);
 		if (censored.contains("."))
 			System.err.println(name + " => " + censored);
@@ -52,6 +57,7 @@ public class CCodeGenerator extends CodeGenerator {
 	}
 	
 	Set<String> declaredFunctions = new HashSet<>();
+	Set<String> declaredStatics = new HashSet<>();
 	
 	Map<String, Type> declaredIdentifiers = new HashMap<>();
 	Map<String, TypeName> declaredVariables = new HashMap<>();
@@ -61,6 +67,9 @@ public class CCodeGenerator extends CodeGenerator {
 		switch (name) {
 		case "osize":
 			return "sizeof(" + new PointerType(new VoidType()).toCString() + ")";
+		case "obx":
+		case "ocx":
+			return "reg_" + name;
 		default:
 			return declaredVariables.containsKey(name) ? declaredVariables.get(name).getName() : censor_(name);
 		}
@@ -85,10 +94,14 @@ public class CCodeGenerator extends CodeGenerator {
 			System.err.println("Declaring " + variable.getName() + " again, because "
 		+ declaredVariables.get(variable.getName()).toCString() + " != " + variable.toCString());
 		
+		if (declaredStatics.contains(variable.getName()))
+			return false;
+		
 		declare(variable);
 		return true;
 	}
 	
+	@SuppressWarnings("unused")
 	private Type getTypeOf(String name) {
 		 Type type = declaredIdentifiers.get(name);
 		 if (type != null) return type;
@@ -106,6 +119,7 @@ public class CCodeGenerator extends CodeGenerator {
 	
 	@Override
 	public void extern(Type ftype, String func) {
+		if (!getAllowPrinting()) return;
 		
 		// uudelleenmäärittelyjä ei sallita TODO tee jotain jos uusi määrittely on tarkempi
 		if (declaredIdentifiers.containsKey(func)) return;
@@ -126,17 +140,23 @@ public class CCodeGenerator extends CodeGenerator {
 
 	@Override
 	public void extern_pil(Type ftype, String func) {
+		if (!getAllowPrinting()) return;
+		
 		extern(ftype, func);
 	}
 
 	@Override
 	public void staticvar(Type type, String name) {
+		if (!getAllowPrinting()) return;
+		
 		println(VARIABLE_BUFFER, type.toCStringWithVariable(censor(name)) + ";");
 		declaredIdentifiers.put(name, type);
+		declaredStatics.add(name);
 	}
 	
 	@Override
 	public void function(boolean exportable, boolean argreg, Type retType, String name, TypeName... param) {
+		if (!getAllowPrinting()) return;
 		
 		declaredVariables.clear();
 		variableCounter.clear();
@@ -162,11 +182,19 @@ public class CCodeGenerator extends CodeGenerator {
 
 	@Override
 	public void ret(String value) {
+		if (!getAllowPrinting()) return;
+		
+		line(currentLine);
+		
 		println(FUNCTION_BUFFER, "returnValue = " + censor(value) + ";");
 	}
 
 	@Override
 	public void endfunction() {
+		if (!getAllowPrinting()) return;
+		
+		line(currentLine);
+		
 		println(FUNCTION_BUFFER, "return returnValue;");
 		
 		decrementIndentationLevel(FUNCTION_BUFFER);
@@ -177,12 +205,16 @@ public class CCodeGenerator extends CodeGenerator {
 
 	@Override
 	public void set(boolean alias, Type type, String var, String val) {
+		if (!getAllowPrinting()) return;
+		
 		if (alias) {
 			println(FUNCTION_BUFFER, "#define " + var + " " + censor(val) + "");
 			declaredIdentifiers.put(var, type);
 			declaredVariables.remove(var);
 			return;
 		}
+		
+		line(currentLine);
 		
 		String rvalue = censor(val);
 		
@@ -195,11 +227,17 @@ public class CCodeGenerator extends CodeGenerator {
 
 	@Override
 	public void setref(String var, String val) {
+		if (!getAllowPrinting()) return;
+		
 		println(FUNCTION_BUFFER, "*" + censor(var) + " = " + censor(val) + ";");
 	}
 
 	@Override
 	public void deref(Type type, String var, String ref) {
+		if (!getAllowPrinting()) return;
+		
+		line(currentLine);
+		
 		String rvalue = "*" + censor(ref);
 		
 		boolean declare = assign(new TypeName(var, type));
@@ -208,24 +246,61 @@ public class CCodeGenerator extends CodeGenerator {
 
 	@Override
 	public void store(String reg, String val) {
+		if (!getAllowPrinting()) return;
+		
+		line(currentLine);
 		println(FUNCTION_BUFFER, "reg_" + reg + " = " + censor(val) + ";");
 	}
 
 	@Override
 	public void load(String var, String reg) {
+		if (!getAllowPrinting()) return;
+		
+		line(currentLine);
 		println(FUNCTION_BUFFER, "" + censor(var) + " = reg_" + reg + ";");
+	}
+	
+	@Override
+	public void setfield(String obj, Type fieldtype, String field, String val) {
+		if (!getAllowPrinting()) return;
+		
+		line(currentLine);
+		if (fieldtype instanceof FloatType) {
+			println(FUNCTION_BUFFER, "*(" + new PointerType(fieldtype).toCString() + ")(((void*) " + censor(obj)
+					+ ") + sizeof(" + new PointerType(new VoidType()).toCString() + ") * " + censor(field) + ") = "
+					+ censor(val) + ";");
+		} else {
+			println(FUNCTION_BUFFER, "((" + new PointerType(fieldtype).toCString() + ") " + censor(obj)
+					+ ")[" + censor(field) + "] = "
+					+ censor(val) + ";");
+		}
+	}
+	
+	// TODO muuttujaan asettaminen
+	@Override
+	public void setfield(boolean alias, Type type, String var, String obj, Type fieldtype, String field, String val) {
+		if (!getAllowPrinting()) return;
+		
+		line(currentLine);
+		println(FUNCTION_BUFFER, "*(" + new PointerType(fieldtype).toCString() + ")(((void*) " + censor(obj)
+				+ ") + sizeof(" + new PointerType(new VoidType()).toCString() + ") * " + censor(field) + ") = "
+				+ censor(val) + ";");
 	}
 
 	@Override
 	public void proceed(String function, String... args) {
+		if (!getAllowPrinting()) return;
+		
+		line(currentLine);
+		
 		switch (function) {
 		case "set":
-			println(FUNCTION_BUFFER, "*(void**)(((void*) " + censor(args[0])
-					+ ") + sizeof(" + new PointerType(new VoidType()).toCString() + ") * " + censor(args[1]) + ") = "
-					+ censor(args[2]) + ";");
+			if (args.length == 3)
+				setfield(args[0], new PointerType(new VoidType()), args[1], args[2]);
 			break;
 		case "@":
-			println(FUNCTION_BUFFER, "*(void**)(" + censor(args[0]) + ") = "
+			if (args.length == 2)
+			println(FUNCTION_BUFFER, "*(" + new PointerType(new PointerType(new VoidType())).toCString() + ")(" + censor(args[0]) + ") = "
 					+ censor(args[1]) + ";");
 			break;
 		/*case "printf":
@@ -245,6 +320,8 @@ public class CCodeGenerator extends CodeGenerator {
 
 	@Override
 	public void call(boolean alias, Type type, String var, String function, String... args) {
+		if (!getAllowPrinting()) return;
+		
 		String call = "";
 		
 		switch (function) {
@@ -279,16 +356,26 @@ public class CCodeGenerator extends CodeGenerator {
 			call += "(" + Arrays.asList(args).stream().map(this::censor).collect(Collectors.joining(" " + function + " ")) + ")";
 			break;
 		case "get":
-			call += "((" + type.toCString() + ") *(void**)(((void*) " + censor(args[0])
-					+ ") + sizeof(" + new PointerType(new VoidType()).toCString() + ") * " + censor(args[1]) + "))";
+			if (type instanceof FloatType) {
+				call += "(*(" + new PointerType(type).toCString() + ")(((" + new PointerType(new VoidType()).toCString() + ") " + censor(args[0])
+						+ ") + sizeof(" + new PointerType(new VoidType()).toCString() + ") * " + censor(args[1]) + "))";
+			}
+			else {
+				call += "((" + new PointerType(type).toCString() + ") " + censor(args[0]) + ")[" + censor(args[1]) + "]";
+			}
 			break;
 		case "set":
-			call += "((" + type.toCString() + ") *(void**)(((void*) " + censor(args[0])
-					+ ") + sizeof(" + new PointerType(new VoidType()).toCString() + ") * " + censor(args[1]) + ") = "
-					+ censor(args[2]) + ")";
+			if (type instanceof FloatType) {
+				call += "(*(" + new PointerType(type).toCString() + ")(((" + new PointerType(new VoidType()).toCString() + ") " + censor(args[0])
+						+ ") + sizeof(" + new PointerType(new VoidType()).toCString() + ") * " + censor(args[1]) + ") = "
+						+ censor(args[2]) + ")";
+			}
+			else {
+				call += "((" + new PointerType(type).toCString() + ") " + censor(args[0]) + ")[" + censor(args[1]) + "] = " + censor(args[2]);
+			}
 			break;
 		case "@":
-			call += "((" + type.toCString() + ") *(void**)(" + censor(args[0]) + "))";
+			call += "(*(" + new PointerType(type).toCString() + ")(" + censor(args[0]) + "))";
 			break;
 		case "ptr_size":
 			call += "sizeof(" + new PointerType(new VoidType()).toCString() + ")";
@@ -321,21 +408,33 @@ public class CCodeGenerator extends CodeGenerator {
 		call = lvalue + call;
 		
 		if (alias) println(FUNCTION_BUFFER, call);
-		else println(FUNCTION_BUFFER, call + ";");
+		else {
+			line(currentLine);
+			println(FUNCTION_BUFFER, call + ";");
+		}
 	}
 
 	@Override
 	public void label(String name) {
+		if (!getAllowPrinting()) return;
+		
+		line(currentLine);
 		println(FUNCTION_BUFFER, censor(name) + ":;");
 	}
 
 	@Override
 	public void go(String label) {
+		if (!getAllowPrinting()) return;
+		
+		line(currentLine);
 		println(FUNCTION_BUFFER, "goto " + censor(label) + ";");
 	}
 
 	@Override
 	public void goif(PILCondition cond, String val1, String val2, String to) {
+		if (!getAllowPrinting()) return;
+		
+		line(currentLine);
 		println(FUNCTION_BUFFER, "if (" + censor(val1) + " " + getCondOp(cond) + " " + censor(val2) + ") goto " + censor(to) + ";");
 	}
 
@@ -372,27 +471,53 @@ public class CCodeGenerator extends CodeGenerator {
 
 	@Override
 	public void startfile() {
-		// ei mitään
+		if (!getAllowPrinting()) return;
+		
+		Type floatype = null;
+		switch (Registers.REGISTER_SIZE_BIT) {
+		default:
+		case 32:
+			floatype = new FloatType(FloatType.Size.SINGLE);
+			break;
+		case 64:
+			floatype = new FloatType(FloatType.Size.DOUBLE);
+			break;
+		}
+		println(TYPE_BUFFER, "typedef " + floatype.toCStringWithVariable(new FloatType(FloatType.Size.ARCH).toCString()) + ";");
+		println(VARIABLE_BUFFER, "extern " + new PointerType(new VoidType()).toCStringWithVariable("reg_obx") + ";");
+		println(VARIABLE_BUFFER, "extern " + new PointerType(new VoidType()).toCStringWithVariable("reg_ocx") + ";");
 	}
 
 	@Override
 	public void endfile() {
+		if (!getAllowPrinting()) return;
+		
 		println(VARIABLE_BUFFER, cBuffer.toString());
 	}
 
+	private String currentFile = "";
+	private int currentLine = 0;
+	
 	@Override
 	public void file(String path) {
+		if (!getAllowPrinting()) return;
+		
 		println(MAIN_BUFFER, "//%file \"" + path.replace("\"", "\\\"") + "\"");
+		currentFile = path;
 	}
 
 	@Override
 	public void stabs_typedef(String type, String def) {
+		if (!getAllowPrinting()) return;
+		
 		println(TYPE_BUFFER, "//%typedef \"" + type + "\" \"" + def + "\"");
 	}
 
 	@Override
 	public void type(String name, Type type) {
-		println(TYPE_BUFFER, "//%type \"" + name + "\"");
+		if (!getAllowPrinting()) return;
+		
+		if (ProceedParser.enableDebug) println(TYPE_BUFFER, "//%type \"" + name + "\"");
 		String pname = name.substring(0, name.indexOf("<")>=0 ? name.indexOf("<") : name.length());
 		if (!pname.contains(":"))
 			println(TYPE_BUFFER, "typedef "
@@ -401,6 +526,8 @@ public class CCodeGenerator extends CodeGenerator {
 
 	@Override
 	public void var(String name, String type) {
+		if (!getAllowPrinting()) return;
+		
 		println(FUNCTION_BUFFER, "//%var \"" + type + "\" " + name);
 		
 		// jos muuttujaa ei ole vielä esitelty, se pitää esitellä
@@ -412,23 +539,33 @@ public class CCodeGenerator extends CodeGenerator {
 
 	@Override
 	public void line(int num) {
-		println(FUNCTION_BUFFER, "// line " + num);
+		if (!getAllowPrinting()) return;
+		
+		if (currentLine != 0 && ProceedParser.enableDebug)
+			println(FUNCTION_BUFFER, "#line " + num + " \"" + currentFile.replace("\"", "\\\"") + "\"");
+		currentLine = num;
 	}
 
 	@Override
 	public void startblock() {
+		if (!getAllowPrinting()) return;
+		
 		//println(FUNCTION_BUFFER, "{");
 		incrementIndentationLevel(FUNCTION_BUFFER);
 	}
 
 	@Override
 	public void endblock() {
+		if (!getAllowPrinting()) return;
+		
 		decrementIndentationLevel(FUNCTION_BUFFER);
 		//println(FUNCTION_BUFFER, "}");
 	}
 	
 	@Override
 	public void pil(String code) {
+		if (!getAllowPrinting()) return;
+		
 		println(FUNCTION_BUFFER, "/*\n" + code + "\n*/");
 	}
 

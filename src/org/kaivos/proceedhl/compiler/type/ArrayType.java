@@ -11,7 +11,7 @@ public class ArrayType extends Type {
 	
 	@Override
 	public String toCString() {
-		return subtype.toCString() + "*";
+		return subtype.toCStringWithVariable("*");
 	}
 	
 	@Override

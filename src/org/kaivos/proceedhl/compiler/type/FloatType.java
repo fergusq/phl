@@ -5,7 +5,9 @@ public class FloatType extends Type {
 
 	public enum Size {
 		SINGLE,
-		DOUBLE
+		DOUBLE,
+		
+		ARCH
 	}
 	
 	public Size size;
@@ -26,7 +28,9 @@ public class FloatType extends Type {
 			return "float";
 		case DOUBLE:
 			return "double";
-
+		case ARCH:
+			return "_phl_afloat";
+			
 		default:
 			return "float";
 		}
