@@ -379,43 +379,14 @@ public class ProceedCompiler {
 		}
 
 		// Lisää rajapinnat listaan
-		for (InterfaceTree t : tree.interfaces) {
-			if (interfaces.containsKey(t.name)) {
-				err("!E Interface " + t.name + " already exists!");
-			}
-			if (createDocs) documentator.docInterface(t);
-			for (int i = 0; i < t.typeargs.size(); i++) {
-				t.typeargs.set(i, "i" + t.name + ":" + t.typeargs.get(i));
-			}
-			interfaces.put(t.name, t);
-		}
+		registerInterfaces(tree);
 		
 		if (createDocs) {
 			documentator.endInterfaces();
 		}
 		
 		// Lisää rakenteet ja rakenteita vastaavat rajapinnat listaan
-		for (StructTree t : tree.structs) {
-			if (interfaces.containsKey(t.name)) {
-				err("!E Interface " + t.name + " already exists!");
-			}
-			InterfaceTree i = new InterfaceTree();
-			i.name = t.name;
-			i.castable = false;
-			i.data = TypeTree.getDefault(UNIT_TYPE);
-			i.functions = t.functions;
-			i.typeargs = t.typeargs;
-			i.module = t.module;
-			i.flags = t.flags;
-			i.flags1 = t.flags1;
-			
-			for (int j = 0; j < i.typeargs.size(); j++) {
-				i.typeargs.set(j, "i" + i.name + ":" + i.typeargs.get(j));
-			}
-			
-			interfaces.put(i.name, i);
-			structures.put(t.name, t);
-		}
+		registerStructures(tree);
 		
 		if (createDocs) {
 			documentator.startStructs();
@@ -426,514 +397,26 @@ public class ProceedCompiler {
 		funcs = (ArrayList<FunctionTree>) tree.functions.clone();
 		
 		// Alustaa rajapintojen funktiot – Lisää this-parametrit ja manglaa tyyppiparametrit
-		for (InterfaceTree t : tree.interfaces) {
-			for (int i = 0; i < t.functions.size(); i++) {
-				FunctionTree t1 = t.functions.get(i);
-				
-				t1.params.add(0, "this");
-				t1.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
-				
-				for (int j = 0; j < t1.typeargs.size(); j++) {
-					t1.typeargs.set(j, "f" + t.name + "." + t1.name + ":" + t1.typeargs.get(j));
-				}
-				t1.typeargs.addAll(0, t.typeargs);
-				
-				//t1.template = false; // t.template; TODO interface-templatet
-				t1.genericHandler.add("i" + t.name);
-				t1.genericHandler.add("f" + t.name + "." + t1.name);
-				
-				t1.name = "method@" + t.name + "." + t1.name;
-				
-				t1.module = t.module;
-				
-				if (functions.containsKey(t1.name)) err("Function " + demangle(t1.name) + " already exists!");
-				
-				funcs.add(t1);
-				functions.put(t1.name, t1);
-			}
-		}
+		prepareAndRegisterInterfaceFunctions(tree);
 		
 		// Varmistaa, että ylityypin mahdolliset tyyppiargumentit on manglattu
-		for (StructTree t : tree.structs) {
-			currFunc = new FunctionTree();
-			currFunc.genericHandler.add("i" + t.name);
-			currFunc.typeargs = t.typeargs;
-			currFunc.template = false; // t.template; TODO struct-templatet
-			t.superType = checkTypeargs(t.superType);
-		}
+		mangleSuperTypeArguments(tree);
 		
 		// Käy läpi rakenteet ja päivittää tyyppitiedon ja ylirakenteiden metodit
-		for (StructTree t : tree.structs) {
-			FunctionTree newf = null;
-			for (FunctionTree t1 : t.functions) {
-				if (t1.name.equals("new")) newf = t1;
-			}
-			if (newf == null) {
-				newf = new FunctionTree();
-				newf.name = "new";
-				newf.returnType = TypeTree.getDefault(UNIT_TYPE);
-				newf.owner = t.name;
-				t.functions.add(newf);
-			}
-			{ // konstruktoriin tyyppitieto
-				LineTree line = new LineTree();
-				{
-					line.type = LineTree.Type.EXPRESSION;
-					line.expr = new ExpressionTree();
-					{
-						line.expr.type = Type.FUNCTION_CALL_LISP;
-						line.expr.function = new MethodCallTree();
-						line.expr.function.type = MethodCallTree.Type.METHOD;
-						line.expr.function.expr = new ExpressionTree("this");
-						line.expr.function.method = "setType";
-						line.expr.args.add(new ExpressionTree("\""+t.name+"\""));
-						// esim. (this:setType "Type")
-					}
-				}
-
-				newf.lines.add(0, line);
-			}
-			
-			// (Jos rakenne on luokka, metodit ovat virtuaalisia)
-			// Luo wrapperimetodit ja tallentaa metodit luokkaan
-			if (t.isClass) {
-				
-				for (int i = 0; i < t.functions.size(); i++) {
-					FunctionTree t1 = t.functions.get(i);
-					if (t1.name.equals("new")) continue;
-					
-					currFunc = new FunctionTree();
-					currFunc.typeargs = (ArrayList<String>) t1.typeargs.clone();
-					currFunc.typeargs.addAll(0, t.typeargs);
-					currFunc.genericHandler.add("f" + t.name + "." + t1.name);
-					currFunc.genericHandler.add("i" + t.name);
-					
-					t1.returnType = checkTypeargs(t1.returnType);
-					
-					for (int j = 0; j < t1.paramtypes.size(); j++) {
-						t1.paramtypes.set(j, checkTypeargs(t1.paramtypes.get(j)));
-					}
-					
-					{ // lisätään funktio new-metodiin
-						LineTree line = new LineTree();
-						{
-							line.type = LineTree.Type.EXPRESSION;
-							line.expr = new ExpressionTree();
-							{
-								line.expr.type = Type.FUNCTION_CALL_LISP;
-								line.expr.function = new MethodCallTree();
-								line.expr.function.type = MethodCallTree.Type.METHOD;
-								line.expr.function.expr = new ExpressionTree(
-										"this");
-								line.expr.function.method = "method@set_"
-										+ t1.name;
-								
-								ArrayList<TypeTree> typeargs = new ArrayList<>();
-								for (String ta : t.typeargs) typeargs.add(TypeTree.getDefault(ta));
-								
-								line.expr.args.add(new ExpressionTree(
-										"vmethod@" + t.name + "." + t1.name, typeargs)); // esim. (this:method@set_m vmethod@c.m~<@T>)
-							}
-						}
-
-						newf.lines.add(0, line);
-					}
-					{ // lisätään metodi funktiolistaan
-						FunctionTree t2 = new FunctionTree();
-
-						t2.lines = (ArrayList<LineTree>) t1.lines.clone();
-						
-						t2.params = (ArrayList<String>) t1.params.clone();
-						t2.paramtypes = (ArrayList<TypeTree>) t1.paramtypes.clone();
-						
-						t2.params.add(0, "this");
-						t2.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
-						
-						t2.returnType = t1.returnType;
-						
-						t2.alias = t1.alias;
-						t2.throwsEx = t1.throwsEx;
-						
-						t2.name = "vmethod@" + t.name + "." + t1.name;
-						t2.owner = t.name;
-
-						t2.typeargs = (ArrayList<String>) t1.typeargs.clone(); // TODO aiemmin t.typeargs
-						t2.typeargs.addAll(0, t.typeargs);
-						t2.template = t1.template; // t.template; TODO struct-templatet TESTI
-						t2.genericHandler.add("i" + t.name);
-						t2.genericHandler.add("f" + t.name + "." + t2.name);
-						
-						t2.module = t.module;
-						
-						funcs.add(t2);
-						functions.put(t2.name, t2);
-					}
-					if (!containsMethod(t1.name, t.superType)) { // muutetaan metodi wrapperimetodiksi
-						LineTree line = new LineTree();
-						{
-							line.type = LineTree.Type.RETURN;
-							line.expr = new ExpressionTree();
-							{
-								line.expr.type = Type.FUNCTION_CALL_LISP;
-								line.expr.function = new MethodCallTree();
-								line.expr.function.type = MethodCallTree.Type.EXPRESSION;
-								line.expr.function.expr = new ExpressionTree();
-								line.expr.function.expr.type = Type.FUNCTION_CALL_LISP;
-								line.expr.function.expr.function = new MethodCallTree();
-								line.expr.function.expr.function.type = MethodCallTree.Type.METHOD;
-								line.expr.function.expr.function.expr = new ExpressionTree(
-										"this");
-								line.expr.function.expr.function.method = "method@get_"
-										+ t1.name;							// esim. return ((this:method@get_m) args);
-								
-								line.expr.args.add(new ExpressionTree("this"));
-								
-								for (String s : t1.params) {
-									line.expr.args.add(new ExpressionTree(s));
-								}
-							}
-						}
-						t1.lines = new ArrayList<>();
-						t1.lines.add(line);
-						
-						if (INCLUDE_DEBUG) {
-						
-							line = new LineTree();
-							{
-								line.type = LineTree.Type.EXPRESSION;
-								line.expr = new ExpressionTree();
-								line.expr.type = Type.FUNCTION_CALL;
-								line.expr.var = "nullPtrCheck";
-								line.expr.args.add(new ExpressionTree("this"));
-							}
-							t1.lines.add(0, line);
-						
-						}
-						
-						t1.alias = null;
-					} else {
-						t.functions.remove(i--); // poistetaan metodi, se lisätään uudestaan yliluokasta
-					}
-					if (!containsField("method@" + t1.name, t.superType)) { // lisätään attribuutti (field)
-						
-						
-						
-						// rakenna @Function -tyyppinen esitys metodista
-						ArrayList<TypeTree> subtypes = new ArrayList<>();
-						subtypes.add(t1.returnType);
-						subtypes.add(TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
-						for (int j = 0; j < t1.paramtypes.size(); j++) subtypes.add(t1.paramtypes.get(j));
-						
-						FieldTree field = new FieldTree("method@" + t1.name, TypeTree.getDefault(FUNC_TYPE, subtypes
-								.toArray(new TypeTree[subtypes.size()])), "method@get_" + t1.name, "method@set_" + t1.name);
-						
-						t.fields.add(field);
-						t.fieldsOrg.add(field);
-					}
-					
-				}
-				addSuperMethods(t, t.superType, t.functions);
-				if (!t.superType.name.equals(TOP_TYPE)) {
-					LineTree line = new LineTree();
-					{
-						line.type = LineTree.Type.EXPRESSION;
-						line.expr = new ExpressionTree();
-						{
-							line.expr.type = Type.FUNCTION_CALL_LISP;
-							line.expr.function = new MethodCallTree();
-							line.expr.function.type = MethodCallTree.Type.METHOD;
-							line.expr.function.expr = new ExpressionTree("super");
-							line.expr.function.method = "new";
-							// esim. (super:new)
-						}
-					}
-	
-					newf.lines.add(0, line);
-				}
-			} else {
-				// Rakenne – metodit eivät ole virtuaalisia
-				addSuperMethodsNonVirtual(t, t.superType, t.functions);
-			}
-		}
+		prepareVirtualMethodsAndAddSuperMethods(tree);
 		
 		// Luo rakenteiden kenttien asettaja- ja antajametodit
 		for (StructTree t : tree.structs) {
 			addSuperFields(t, t.superType, t.fields);
-			for (int i = 0; i < t.fields.size(); i++) {
-				FieldTree f = t.fields.get(i);
-				
-				// getteri
-				{
-					FunctionTree t1 = new FunctionTree();
-
-					{
-						LineTree line = new LineTree();
-						if (INCLUDE_DEBUG) {
-							
-							line = new LineTree();
-							{
-								line.type = LineTree.Type.EXPRESSION;
-								line.expr = new ExpressionTree();
-								line.expr.type = Type.FUNCTION_CALL;
-								line.expr.var = "nullPtrCheck";
-								line.expr.args.add(new ExpressionTree("this"));
-							}
-							t1.lines.add(0, line);
-						
-						}
-						
-						LineTree t2 = new LineTree();
-						t2.type = LineTree.Type.RETURN;
-						ExpressionTree e = new ExpressionTree();
-						{
-							e.type = Type.TYPE_CAST;
-							e.typeCast = f.type;
-							
-							ExpressionTree e1 = new ExpressionTree();
-							{
-								e1.type = Type.FUNCTION_CALL;
-								e1.var = "get";
-								ExpressionTree e2 = new ExpressionTree();
-								{
-									e2.type = Type.VALUE;
-									e2.var = "this";
-								}
-								e1.args.add(e2);
-								e2 = new ExpressionTree();
-								{
-									e2.type = Type.VALUE;
-									e2.var = "" + i;
-								}
-								e1.args.add(e2);
-							}
-							e.expr = e1;
-						}
-						t2.expr = e;
-						
-						t1.lines.add(t2);
-					}
-					
-					t1.params.add(0, "this");
-					t1.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
-					
-					t1.returnType = f.type;
-					
-					t1.name = "method@" + t.name + "." + f.getter;
-					t1.typeargs = (ArrayList<String>) t.typeargs.clone();
-					t1.template = false;
-					t1.genericHandler.add("i" + t.name);
-					t1.owner = t.name;
-					t1.field = i;
-					t1.flags.add("getter");
-					t1.flags.add(":getter:");
-					t1.flags.add(":argreg:");
-					t1.flags.addAll(f.getter_flags);
-					t1.flags1.putAll(f.getter_flags1);
-					
-					t1.module = t.module;
-					funcs.add(t1);
-					functions.put(t1.name, t1);
-				}
-				
-				// setteri
-				{
-					FunctionTree t1 = new FunctionTree();
-
-					{
-						
-						LineTree line = new LineTree();
-						
-						if (INCLUDE_DEBUG) {
-							
-							line = new LineTree();
-							{
-								line.type = LineTree.Type.EXPRESSION;
-								line.expr = new ExpressionTree();
-								line.expr.type = Type.FUNCTION_CALL;
-								line.expr.var = "nullPtrCheck";
-								line.expr.args.add(new ExpressionTree("this"));
-							}
-							t1.lines.add(0, line);
-						
-						}
-						
-						LineTree t2 = new LineTree();
-						t2.type = LineTree.Type.EXPRESSION;
-						ExpressionTree e = new ExpressionTree();
-						{
-							e.type = Type.FUNCTION_CALL;
-							e.var = "set";
-							ExpressionTree e2 = new ExpressionTree();
-							{
-								e2.type = Type.VALUE;
-								e2.var = "this";
-							}
-							e.args.add(e2);
-							e2 = new ExpressionTree();
-							{
-								e2.type = Type.VALUE;
-								e2.var = "" + i;
-							}
-							e.args.add(e2);
-							e2 = new ExpressionTree();
-							{
-								e2.type = Type.VALUE;
-								e2.var = "value";
-							}
-							e.args.add(e2);
-						}
-						t2.expr = e;
-						
-						t1.lines.add(t2);
-					}
-					
-					t1.params.add(0, "this");
-					t1.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
-					
-					t1.params.add("value");
-					t1.paramtypes.add(f.type);
-					
-					t1.returnType = TypeTree.getDefault(UNIT_TYPE);
-					
-					t1.name = "method@" + t.name + "." + f.setter;
-					t1.typeargs = (ArrayList<String>) t.typeargs.clone();
-					t1.template = false; // t.template; TODO struct-templatet
-					t1.genericHandler.add("i" + t.name);
-					t1.owner = t.name;
-					t1.field = i;
-					t1.flags.add("setter");
-					t1.flags.add(":setter:");
-					t1.flags.add(":argreg:");
-					t1.flags.addAll(f.setter_flags);
-					t1.flags1.putAll(f.setter_flags1);
-					
-					t1.module = t.module;
-					funcs.add(t1);
-					functions.put(t1.name, t1);
-				}
-				
-				// viittaus
-				{
-					FunctionTree t1 = new FunctionTree();
-
-					{
-						LineTree line = new LineTree();
-						if (INCLUDE_DEBUG) {
-							
-							line = new LineTree();
-							{
-								line.type = LineTree.Type.EXPRESSION;
-								line.expr = new ExpressionTree();
-								line.expr.type = Type.FUNCTION_CALL;
-								line.expr.var = "nullPtrCheck";
-								line.expr.args.add(new ExpressionTree("this"));
-							}
-							t1.lines.add(0, line);
-						
-						}
-						
-						LineTree t2 = new LineTree();
-						t2.type = LineTree.Type.RETURN;
-						t2.expr = ExpressionTree.casttree(TypeTree.getDefault(PTR_TYPE, f.type),
-								ExpressionTree.calltree("+",
-										ExpressionTree.casttree(TypeTree.getDefault(INT_TYPE), ExpressionTree.casttree(TypeTree.getDefault(TOP_TYPE), ExpressionTree.vartree("this"))),
-										ExpressionTree.vartree(""+i)));
-						
-						t1.lines.add(t2);
-					}
-					
-					t1.params.add(0, "this");
-					t1.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
-					
-					t1.returnType = TypeTree.getDefault(PTR_TYPE, f.type);
-					
-					t1.name = "method@" + t.name + ".getref@" + f.name;
-					t1.typeargs = (ArrayList<String>) t.typeargs.clone();
-					t1.template = false;
-					t1.genericHandler.add("i" + t.name);
-					t1.owner = t.name;
-					t1.field = i;
-					t1.flags.add("ref");
-					t1.flags.add(":refgetter:");
-					t1.flags.add(":argreg:");
-					t1.flags.add("warn");
-					t1.flags1.put("warn", new Flag("CRITICAL_ONLY"));
-					
-					t1.module = t.module;
-					funcs.add(t1);
-					functions.put(t1.name, t1);
-				}
-			}
+			addFields(t);
 			
 			// Lisää kaikki "tavalliset" metodit listaan
 			// Antaja-, asettaja- ja virtuaaliset metodit ym. on lisätty aiemmin (yleensä heti niiden luonnin jälkeen)
-			for (int i = 0; i < t.functions.size(); i++) {
-				FunctionTree t1 = t.functions.get(i);
-				/*t1.params.add(0, "this");
-				t1.paramtypes.add(0, TypeTree.getDefault(t.name, (String[]) t.typeargs.toArray(new String[t.typeargs.size()])));
-				t1.name = "method@" + t.name + "." + t1.name;
-				if (!t1.typeargsAlreadySet) {
-					t1.typeargs = (ArrayList<String>) t.typeargs.clone();
-					t1.template = false; // t.template; TODO struct-templatet
-				}
-				t1.genericHandler = "i" + t1.owner;
-				*/
-				
-				
-				FunctionTree t2 = new FunctionTree();
-
-				t2.lines = (ArrayList<LineTree>) t1.lines.clone();
-				
-				t2.params = (ArrayList<String>) t1.params.clone();
-				t2.paramtypes = (ArrayList<TypeTree>) t1.paramtypes.clone();
-				
-				t2.params.add(0, "this");
-				t2.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
-				
-				t2.returnType = t1.returnType;
-				
-				t2.alias = t1.alias;
-				t2.throwsEx = t1.throwsEx;
-				
-				t2.name = "method@" + t.name + "." + t1.name;
-				t2.owner = t.name;
-				t2.field = t1.field;
-
-				if (!t1.typeargsAlreadySet) {
-					t2.typeargs = (ArrayList<String>) t1.typeargs.clone();
-					t2.typeargs.addAll(0, t.typeargs);
-					t2.template = t1.template; // t.template; TODO struct-templatet
-				}
-				t2.genericHandler.add("i" + t1.owner);
-				t2.genericHandler.add("f" + t.name + "." + t1.name);
-				
-				t2.flags = t1.flags;
-				t2.flags1 = (HashMap<String, Flag>) t1.flags1.clone();
-				
-				t2.module = t1.module;
-				t2.isAbstract = t1.isAbstract;
-				t2.isExtern = t1.isExtern;
-				
-				if (functions.containsKey(t2.name)) err("Function @" + demangle(t2.name) + " already exists!");
-				
-				funcs.add(t2);
-				functions.put(t2.name, t2);
-			}
+			registerStructureMethods(t);
 		}
 		
 		// Varmistaa, että funktioiden parametrien ja palautusarvon tyypit eivät sisällä manglaamattomia tyyppiparametreja
-		for (int i = 0; i < funcs.size(); i++) {
-			
-			FunctionTree t = currFunc = funcs.get(i);
-			
-			//System.err.println("\nTranslating " + t.name + "... " + t.typeargs + t.genericHandler);
-			
-			t.returnType = checkTypeargs(t.returnType);
-			
-			for (int j = 0; j < t.paramtypes.size(); j++) {
-				t.paramtypes.set(j, checkTypeargs(t.paramtypes.get(j)));
-			}
-		}
+		prepareFunctions();
 		
 		/* Pluginit */
 		
@@ -1018,67 +501,569 @@ public class ProceedCompiler {
 		if (out != null) out.flush();
 	}
 
-	/**
-	 * Lista kaikista käytetyistä tyypeistä, mukaanlukien rajapintojen geneeriset/template tyypit
-	 */
-	//private Set<TypeTree> uniqueTypes = new HashSet<ProceedTree.TypeTree>();
-	private List<TypeTree> uniqueTypes = new ArrayList<>();
-	private boolean uniqueListFreeze = false;
+	/* **** RAJAPINNAT, RAKENTEET JA FUNKTIOT **** */
 	
-	private String STABS_structType(TypeTree t, StructTree s) throws CompilerError {
-		
-		currFunc = new FunctionTree();
-		currFunc.typeargs = s.typeargs;
-		currFunc.genericHandler.add("i" + s.name);
-		
-		int size = 0;
-		for (int i = 0; i < s.fields.size(); i++) size += Registers.REGISTER_SIZE;
-		
-		String members = "";
-		for (int i = 0; i < s.fields.size(); i++) {
-			TypeTree type = fixTypeargs(checkTypeargs(s.fields.get(i).type), t, s);
-			if (!uniqueTypes.contains(type)) {
-				uniqueTypes.add(type);
+	/** Lisää rajapinnat listaan */
+	private void registerInterfaces(StartTree tree) throws CompilerError {
+		for (InterfaceTree t : tree.interfaces) {
+			if (interfaces.containsKey(t.name)) {
+				err("!E Interface " + t.name + " already exists!");
 			}
-			members += demanglef(s.fields.get(i).name) + ":" + "!" + type.toString().replace("@", "") + "?" + "," + i*Registers.REGISTER_SIZE_BIT + "," + Registers.REGISTER_SIZE_BIT + ";";
+			if (createDocs) documentator.docInterface(t);
+			for (int i = 0; i < t.typeargs.size(); i++) {
+				t.typeargs.set(i, "i" + t.name + ":" + t.typeargs.get(i));
+			}
+			interfaces.put(t.name, t);
 		}
-		return "*s" + size + members + ";";
+	}
+
+	/** Lisää rakenteet ja rakenteita vastaavat rajapinnat listaan */
+	private void registerStructures(StartTree tree) throws CompilerError {
+		for (StructTree t : tree.structs) {
+			if (interfaces.containsKey(t.name)) {
+				err("!E Interface " + t.name + " already exists!");
+			}
+			InterfaceTree i = new InterfaceTree();
+			i.name = t.name;
+			i.castable = false;
+			i.data = TypeTree.getDefault(UNIT_TYPE);
+			i.functions = t.functions;
+			i.typeargs = t.typeargs;
+			i.module = t.module;
+			i.flags = t.flags;
+			i.flags1 = t.flags1;
+			
+			for (int j = 0; j < i.typeargs.size(); j++) {
+				i.typeargs.set(j, "i" + i.name + ":" + i.typeargs.get(j));
+			}
+			
+			interfaces.put(i.name, i);
+			structures.put(t.name, t);
+		}
 	}
 	
-	public static org.kaivos.proceedhl.compiler.type.Type typeFromTree(TypeTree t) {
-		switch (t.name) {
-		case INT_TYPE:
-			return new IntegerType(Size.LONG);
-		case FLOAT_TYPE:
-			return new FloatType(FloatType.Size.ARCH);
-		case BOOL_TYPE:
-			return new IntegerType(Size.LONG);
-		case STR_TYPE:
-			return new PointerType(new IntegerType(Size.I8), true);
-		case PTR_TYPE:
-			if (t.subtypes.size() > 0)
-				return new PointerType(typeFromTree(t.subtypes.get(0)));
-			return new PointerType(new VoidType());
-		case LIST_TYPE:
-			return new PointerType(new VoidType());
-		case NULL_TYPE:
-		case UNIT_TYPE:
-			return new IntegerType(Size.I8);
-		case METHOD_TYPE:
-			return new FunctionType(typeFromTree(t.subtypes.get(0)));
-		case FUNC_TYPE:
-		case EXT_FUNC_TYPE:
-			if (t.subtypes.size() > 0)
-				return new FunctionType(typeFromTree(t.subtypes.get(0)), t.subtypes.stream().skip(1).map(t_ -> typeFromTree(t_)).collect(Collectors.toList()));
-		case OBJ_TYPE:
-		default:
-			if (structures.containsKey(t.name))
-				return new ReferenceType(t.name);
-			if (interfaces.containsKey(t.name)) {
-				if (interfaces.get(t.name).data != null)
-					return typeFromTree(interfaces.get(t.name).data);
+	/** Alustaa rajapintojen funktiot – Lisää this-parametrit ja manglaa tyyppiparametrit */
+	private void prepareAndRegisterInterfaceFunctions(StartTree tree) throws CompilerError {
+		for (InterfaceTree t : tree.interfaces) {
+			for (int i = 0; i < t.functions.size(); i++) {
+				FunctionTree t1 = t.functions.get(i);
+				
+				t1.params.add(0, "this");
+				t1.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
+				
+				for (int j = 0; j < t1.typeargs.size(); j++) {
+					t1.typeargs.set(j, "f" + t.name + "." + t1.name + ":" + t1.typeargs.get(j));
+				}
+				t1.typeargs.addAll(0, t.typeargs);
+				
+				//t1.template = false; // t.template; TODO interface-templatet
+				t1.genericHandler.add("i" + t.name);
+				t1.genericHandler.add("f" + t.name + "." + t1.name);
+				
+				t1.name = "method@" + t.name + "." + t1.name;
+				
+				t1.module = t.module;
+				
+				if (functions.containsKey(t1.name)) err("Function " + demangle(t1.name) + " already exists!");
+				
+				funcs.add(t1);
+				functions.put(t1.name, t1);
 			}
-			return new PointerType(new VoidType());
+		}
+	}
+	
+	/** Varmistaa, että funktioiden parametrien ja palautusarvon tyypit eivät sisällä manglaamattomia tyyppiparametreja */
+	private void prepareFunctions() throws CompilerError {
+		for (int i = 0; i < funcs.size(); i++) {
+			
+			FunctionTree t = currFunc = funcs.get(i);
+			
+			//System.err.println("\nTranslating " + t.name + "... " + t.typeargs + t.genericHandler);
+			
+			t.returnType = checkTypeargs(t.returnType);
+			
+			for (int j = 0; j < t.paramtypes.size(); j++) {
+				t.paramtypes.set(j, checkTypeargs(t.paramtypes.get(j)));
+			}
+		}
+	}
+	
+	/** Varmistaa, että ylityypin tyyppiargumentit on manglattu **/
+	private void mangleSuperTypeArguments(StartTree tree) throws CompilerError {
+		for (StructTree t : tree.structs) {
+			currFunc = new FunctionTree();
+			currFunc.genericHandler.add("i" + t.name);
+			currFunc.typeargs = t.typeargs;
+			currFunc.template = false; // t.template; TODO struct-templatet
+			t.superType = checkTypeargs(t.superType);
+		}
+	}
+
+	/** Käy läpi rakenteet ja päivittää tyyppitiedon ja ylirakenteiden metodit */
+	@SuppressWarnings("unchecked")
+	private void prepareVirtualMethodsAndAddSuperMethods(StartTree tree)
+			throws CompilerError {
+		for (StructTree structure : tree.structs) {
+			FunctionTree newf = null;
+			for (FunctionTree t1 : structure.functions) {
+				if (t1.name.equals("new")) newf = t1;
+			}
+			if (newf == null) {
+				newf = new FunctionTree();
+				newf.name = "new";
+				newf.returnType = TypeTree.getDefault(UNIT_TYPE);
+				newf.owner = structure.name;
+				structure.functions.add(newf);
+			}
+			{ // konstruktoriin tyyppitieto
+				LineTree line = new LineTree();
+				{
+					line.type = LineTree.Type.EXPRESSION;
+					line.expr = new ExpressionTree();
+					{
+						line.expr.type = Type.FUNCTION_CALL_LISP;
+						line.expr.function = new MethodCallTree();
+						line.expr.function.type = MethodCallTree.Type.METHOD;
+						line.expr.function.expr = new ExpressionTree("this");
+						line.expr.function.method = "setType";
+						line.expr.args.add(new ExpressionTree("\""+structure.name+"\""));
+						// esim. (this:setType "Type")
+					}
+				}
+
+				newf.lines.add(0, line);
+			}
+			
+			// (Jos rakenne on luokka, metodit ovat virtuaalisia)
+			// Luo wrapperimetodit ja tallentaa metodit luokkaan
+			if (structure.isClass) {
+				
+				for (int i = 0; i < structure.functions.size(); i++) {
+					FunctionTree method = structure.functions.get(i);
+					if (method.name.equals("new")) continue;
+					
+					currFunc = new FunctionTree();
+					currFunc.typeargs = (ArrayList<String>) method.typeargs.clone();
+					currFunc.typeargs.addAll(0, structure.typeargs);
+					currFunc.genericHandler.add("f" + structure.name + "." + method.name);
+					currFunc.genericHandler.add("i" + structure.name);
+					
+					method.returnType = checkTypeargs(method.returnType);
+					
+					for (int j = 0; j < method.paramtypes.size(); j++) {
+						method.paramtypes.set(j, checkTypeargs(method.paramtypes.get(j)));
+					}
+					
+					{ // lisätään funktio new-metodiin
+						LineTree line = new LineTree();
+						{
+							line.type = LineTree.Type.EXPRESSION;
+							line.expr = new ExpressionTree();
+							{
+								line.expr.type = Type.FUNCTION_CALL_LISP;
+								line.expr.function = new MethodCallTree();
+								line.expr.function.type = MethodCallTree.Type.METHOD;
+								line.expr.function.expr = new ExpressionTree(
+										"this");
+								line.expr.function.method = "method@set_"
+										+ method.name;
+								
+								ArrayList<TypeTree> typeargs = new ArrayList<>();
+								for (String ta : structure.typeargs) typeargs.add(TypeTree.getDefault(ta));
+								
+								line.expr.args.add(new ExpressionTree(
+										"vmethod@" + structure.name + "." + method.name, typeargs)); // esim. (this:method@set_m vmethod@c.m~<@T>)
+							}
+						}
+
+						newf.lines.add(0, line);
+					}
+					{ // lisätään metodi funktiolistaan
+						FunctionTree function = new FunctionTree();
+
+						function.lines = (ArrayList<LineTree>) method.lines.clone();
+						
+						function.params = (ArrayList<String>) method.params.clone();
+						function.paramtypes = (ArrayList<TypeTree>) method.paramtypes.clone();
+						
+						function.params.add(0, "this");
+						function.paramtypes.add(0, TypeTree.getDefault(structure.name, structure.typeargs.toArray(new String[structure.typeargs.size()])));
+						
+						function.returnType = method.returnType;
+						
+						function.alias = method.alias;
+						function.throwsEx = method.throwsEx;
+						
+						function.name = "vmethod@" + structure.name + "." + method.name;
+						function.owner = structure.name;
+
+						function.typeargs = (ArrayList<String>) method.typeargs.clone(); // TODO aiemmin t.typeargs
+						function.typeargs.addAll(0, structure.typeargs);
+						function.template = method.template; // t.template; TODO struct-templatet TESTI
+						function.genericHandler.add("i" + structure.name);
+						function.genericHandler.add("f" + structure.name + "." + function.name);
+						
+						function.module = structure.module;
+						
+						funcs.add(function);
+						functions.put(function.name, function);
+					}
+					if (!containsMethod(method.name, structure.superType)) { // muutetaan metodi wrapperimetodiksi
+						LineTree line = new LineTree();
+						{
+							line.type = LineTree.Type.RETURN;
+							line.expr = new ExpressionTree();
+							{
+								line.expr.type = Type.FUNCTION_CALL_LISP;
+								line.expr.function = new MethodCallTree();
+								line.expr.function.type = MethodCallTree.Type.EXPRESSION;
+								line.expr.function.expr = new ExpressionTree();
+								line.expr.function.expr.type = Type.FUNCTION_CALL_LISP;
+								line.expr.function.expr.function = new MethodCallTree();
+								line.expr.function.expr.function.type = MethodCallTree.Type.METHOD;
+								line.expr.function.expr.function.expr = new ExpressionTree(
+										"this");
+								line.expr.function.expr.function.method = "method@get_"
+										+ method.name;							// esim. return ((this:method@get_m) args);
+								
+								line.expr.args.add(new ExpressionTree("this"));
+								
+								for (String s : method.params) {
+									line.expr.args.add(new ExpressionTree(s));
+								}
+							}
+						}
+						method.lines = new ArrayList<>();
+						method.lines.add(line);
+						
+						if (INCLUDE_DEBUG) {
+						
+							line = new LineTree();
+							{
+								line.type = LineTree.Type.EXPRESSION;
+								line.expr = new ExpressionTree();
+								line.expr.type = Type.FUNCTION_CALL;
+								line.expr.var = "nullPtrCheck";
+								line.expr.args.add(new ExpressionTree("this"));
+							}
+							method.lines.add(0, line);
+						
+						}
+						
+						method.alias = null;
+					} else {
+						structure.functions.remove(i--); // poistetaan metodi, se lisätään uudestaan yliluokasta
+					}
+					if (!containsField("method@" + method.name, structure.superType)) { // lisätään attribuutti (field)
+						
+						
+						
+						// rakenna @Function -tyyppinen esitys metodista
+						ArrayList<TypeTree> subtypes = new ArrayList<>();
+						subtypes.add(method.returnType);
+						subtypes.add(TypeTree.getDefault(structure.name, structure.typeargs.toArray(new String[structure.typeargs.size()])));
+						for (int j = 0; j < method.paramtypes.size(); j++) subtypes.add(method.paramtypes.get(j));
+						
+						FieldTree field = new FieldTree("method@" + method.name, TypeTree.getDefault(FUNC_TYPE, subtypes
+								.toArray(new TypeTree[subtypes.size()])), "method@get_" + method.name, "method@set_" + method.name);
+						
+						structure.fields.add(field);
+						structure.fieldsOrg.add(field);
+					}
+					
+				}
+				addSuperMethods(structure, structure.superType, structure.functions);
+				
+				// Kutsutaan ylätyypin konstruktoria
+				if (!structure.superType.name.equals(TOP_TYPE)) {
+					LineTree line = new LineTree();
+					{
+						line.type = LineTree.Type.EXPRESSION;
+						line.expr = new ExpressionTree();
+						{
+							line.expr.type = Type.FUNCTION_CALL_LISP;
+							line.expr.function = new MethodCallTree();
+							line.expr.function.type = MethodCallTree.Type.METHOD;
+							line.expr.function.expr = new ExpressionTree("super");
+							line.expr.function.method = "new";
+							// esim. (super:new)
+						}
+					}
+	
+					newf.lines.add(0, line);
+				}
+			} else {
+				// Rakenne – metodit eivät ole virtuaalisia
+				addSuperMethodsNonVirtual(structure, structure.superType, structure.functions);
+			}
+		}
+	}
+	
+	/** Luo rakenteen kentille antaja- ja asettajametodit */
+	@SuppressWarnings("unchecked")
+	private void addFields(StructTree t) {
+		for (int i = 0; i < t.fields.size(); i++) {
+			FieldTree f = t.fields.get(i);
+			
+			// getteri
+			{
+				FunctionTree getter = new FunctionTree();
+
+				{
+					LineTree line = new LineTree();
+					if (INCLUDE_DEBUG) {
+						
+						line = new LineTree();
+						{
+							line.type = LineTree.Type.EXPRESSION;
+							line.expr = new ExpressionTree();
+							line.expr.type = Type.FUNCTION_CALL;
+							line.expr.var = "nullPtrCheck";
+							line.expr.args.add(new ExpressionTree("this"));
+						}
+						getter.lines.add(0, line);
+					
+					}
+					
+					LineTree t2 = new LineTree();
+					t2.type = LineTree.Type.RETURN;
+					ExpressionTree e = new ExpressionTree();
+					{
+						e.type = Type.TYPE_CAST;
+						e.typeCast = f.type;
+						
+						ExpressionTree e1 = new ExpressionTree();
+						{
+							e1.type = Type.FUNCTION_CALL;
+							e1.var = "get";
+							ExpressionTree e2 = new ExpressionTree();
+							{
+								e2.type = Type.VALUE;
+								e2.var = "this";
+							}
+							e1.args.add(e2);
+							e2 = new ExpressionTree();
+							{
+								e2.type = Type.VALUE;
+								e2.var = "" + i;
+							}
+							e1.args.add(e2);
+						}
+						e.expr = e1;
+					}
+					t2.expr = e;
+					
+					getter.lines.add(t2);
+				}
+				
+				getter.params.add(0, "this");
+				getter.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
+				
+				getter.returnType = f.type;
+				
+				getter.name = "method@" + t.name + "." + f.getter;
+				getter.typeargs = (ArrayList<String>) t.typeargs.clone();
+				getter.template = false;
+				getter.genericHandler.add("i" + t.name);
+				getter.owner = t.name;
+				getter.field = i;
+				getter.flags.add("getter");
+				getter.flags.add(":getter:");
+				getter.flags.add(":argreg:");
+				getter.flags.addAll(f.getter_flags);
+				getter.flags1.putAll(f.getter_flags1);
+				
+				getter.module = t.module;
+				funcs.add(getter);
+				functions.put(getter.name, getter);
+			}
+			
+			// setteri
+			{
+				FunctionTree setter = new FunctionTree();
+
+				{
+					
+					LineTree line = new LineTree();
+					
+					if (INCLUDE_DEBUG) {
+						
+						line = new LineTree();
+						{
+							line.type = LineTree.Type.EXPRESSION;
+							line.expr = new ExpressionTree();
+							line.expr.type = Type.FUNCTION_CALL;
+							line.expr.var = "nullPtrCheck";
+							line.expr.args.add(new ExpressionTree("this"));
+						}
+						setter.lines.add(0, line);
+					
+					}
+					
+					LineTree t2 = new LineTree();
+					t2.type = LineTree.Type.EXPRESSION;
+					ExpressionTree e = new ExpressionTree();
+					{
+						e.type = Type.FUNCTION_CALL;
+						e.var = "set";
+						ExpressionTree e2 = new ExpressionTree();
+						{
+							e2.type = Type.VALUE;
+							e2.var = "this";
+						}
+						e.args.add(e2);
+						e2 = new ExpressionTree();
+						{
+							e2.type = Type.VALUE;
+							e2.var = "" + i;
+						}
+						e.args.add(e2);
+						e2 = new ExpressionTree();
+						{
+							e2.type = Type.VALUE;
+							e2.var = "value";
+						}
+						e.args.add(e2);
+					}
+					t2.expr = e;
+					
+					setter.lines.add(t2);
+				}
+				
+				setter.params.add(0, "this");
+				setter.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
+				
+				setter.params.add("value");
+				setter.paramtypes.add(f.type);
+				
+				setter.returnType = TypeTree.getDefault(UNIT_TYPE);
+				
+				setter.name = "method@" + t.name + "." + f.setter;
+				setter.typeargs = (ArrayList<String>) t.typeargs.clone();
+				setter.template = false; // t.template; TODO struct-templatet
+				setter.genericHandler.add("i" + t.name);
+				setter.owner = t.name;
+				setter.field = i;
+				setter.flags.add("setter");
+				setter.flags.add(":setter:");
+				setter.flags.add(":argreg:");
+				setter.flags.addAll(f.setter_flags);
+				setter.flags1.putAll(f.setter_flags1);
+				
+				setter.module = t.module;
+				funcs.add(setter);
+				functions.put(setter.name, setter);
+			}
+			
+			// viittaus
+			{
+				FunctionTree referer = new FunctionTree();
+
+				{
+					LineTree line = new LineTree();
+					if (INCLUDE_DEBUG) {
+						
+						line = new LineTree();
+						{
+							line.type = LineTree.Type.EXPRESSION;
+							line.expr = new ExpressionTree();
+							line.expr.type = Type.FUNCTION_CALL;
+							line.expr.var = "nullPtrCheck";
+							line.expr.args.add(new ExpressionTree("this"));
+						}
+						referer.lines.add(0, line);
+					
+					}
+					
+					LineTree t2 = new LineTree();
+					t2.type = LineTree.Type.RETURN;
+					t2.expr = ExpressionTree.casttree(TypeTree.getDefault(PTR_TYPE, f.type),
+							ExpressionTree.calltree("+",
+									ExpressionTree.casttree(TypeTree.getDefault(INT_TYPE), ExpressionTree.casttree(TypeTree.getDefault(TOP_TYPE), ExpressionTree.vartree("this"))),
+									ExpressionTree.vartree(""+i)));
+					
+					referer.lines.add(t2);
+				}
+				
+				referer.params.add(0, "this");
+				referer.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
+				
+				referer.returnType = TypeTree.getDefault(PTR_TYPE, f.type);
+				
+				referer.name = "method@" + t.name + ".getref@" + f.name;
+				referer.typeargs = (ArrayList<String>) t.typeargs.clone();
+				referer.template = false;
+				referer.genericHandler.add("i" + t.name);
+				referer.owner = t.name;
+				referer.field = i;
+				referer.flags.add("ref");
+				referer.flags.add(":refgetter:");
+				referer.flags.add(":argreg:");
+				referer.flags.add("warn");
+				referer.flags1.put("warn", new Flag("CRITICAL_ONLY"));
+				
+				referer.module = t.module;
+				funcs.add(referer);
+				functions.put(referer.name, referer);
+			}
+		}
+	}
+	
+	/** Lisää kaikki "tavalliset" metodit listaan
+	 ** Antaja-, asettaja- ja virtuaaliset metodit ym. on lisätty aiemmin (yleensä heti niiden luonnin jälkeen) */
+	@SuppressWarnings("unchecked")
+	private void registerStructureMethods(StructTree t) throws CompilerError {
+		for (int i = 0; i < t.functions.size(); i++) {
+			FunctionTree method = t.functions.get(i);
+			/*t1.params.add(0, "this");
+			t1.paramtypes.add(0, TypeTree.getDefault(t.name, (String[]) t.typeargs.toArray(new String[t.typeargs.size()])));
+			t1.name = "method@" + t.name + "." + t1.name;
+			if (!t1.typeargsAlreadySet) {
+				t1.typeargs = (ArrayList<String>) t.typeargs.clone();
+				t1.template = false; // t.template; TODO struct-templatet
+			}
+			t1.genericHandler = "i" + t1.owner;
+			*/
+			
+			
+			FunctionTree function = new FunctionTree();
+
+			function.lines = (ArrayList<LineTree>) method.lines.clone();
+			
+			function.params = (ArrayList<String>) method.params.clone();
+			function.paramtypes = (ArrayList<TypeTree>) method.paramtypes.clone();
+			
+			function.params.add(0, "this");
+			function.paramtypes.add(0, TypeTree.getDefault(t.name, t.typeargs.toArray(new String[t.typeargs.size()])));
+			
+			function.returnType = method.returnType;
+			
+			function.alias = method.alias;
+			function.throwsEx = method.throwsEx;
+			
+			function.name = "method@" + t.name + "." + method.name;
+			function.owner = t.name;
+			function.field = method.field;
+
+			if (!method.typeargsAlreadySet) {
+				function.typeargs = (ArrayList<String>) method.typeargs.clone();
+				function.typeargs.addAll(0, t.typeargs);
+				function.template = method.template; // t.template; TODO struct-templatet
+			}
+			function.genericHandler.add("i" + method.owner);
+			function.genericHandler.add("f" + t.name + "." + method.name);
+			
+			function.flags = method.flags;
+			function.flags1 = (HashMap<String, Flag>) method.flags1.clone();
+			
+			function.module = method.module;
+			function.isAbstract = method.isAbstract;
+			function.isExtern = method.isExtern;
+			
+			if (functions.containsKey(function.name)) err("Function @" + demangle(function.name) + " already exists!");
+			
+			funcs.add(function);
+			functions.put(function.name, function);
 		}
 	}
 
@@ -1172,6 +1157,7 @@ public class ProceedCompiler {
 			err("Invalid super class " + superType + " not resolved");
 		}
 		
+		// Jos ylityyppi ei ole luokka (virtuaalinen) ei lisättävien metodienkaan tarvitse olla virtuaalisia
 		if (!structures.get(superType.name).isClass) {
 			ArrayList<FunctionTree> methods2 = new ArrayList<>();
 			addSuperMethodsNonVirtual(currStruct, superType, methods2);
@@ -1179,17 +1165,19 @@ public class ProceedCompiler {
 			return;
 		}
 		
-		ArrayList<FunctionTree> methods2 = new ArrayList<>();
+		ArrayList<FunctionTree> newMethods = new ArrayList<>();
 		
-		StructTree t = structures.get(superType.name);
-		if (!t.superType.name.equals(TOP_TYPE)) {
+		// Lisätään ylätyypin ylätyypin metodit
+		StructTree superStructure = structures.get(superType.name);
+		if (!superStructure.superType.name.equals(TOP_TYPE)) {
 			superTypes.push(superType.name);
-			addSuperMethods(currStruct, t.superType, methods2);
+			addSuperMethods(currStruct, superStructure.superType, newMethods);
 			superTypes.pop();
 		}
 
-		for (int i = 0; i < t.functionsOrg.size(); i++) {
-			FunctionTree f = t.functionsOrg.get(i);
+		// Lisätään varsinaiset ylätyypin metodit wrappereina
+		for (int i = 0; i < superStructure.functionsOrg.size(); i++) {
+			FunctionTree f = superStructure.functionsOrg.get(i);
 			
 			FunctionTree t1 = f.clonec();
 			{ // tehdään wrapperimetodi
@@ -1236,23 +1224,23 @@ public class ProceedCompiler {
 				
 				t1.alias = null;
 				
-				t1.returnType = fixTypeargs(f.returnType, currStruct.superType, t);
+				t1.returnType = fixTypeargs(f.returnType, currStruct.superType, superStructure);
 				
 				for (int j = 0; j < t1.paramtypes.size(); j++) {
-					t1.paramtypes.set(j, fixTypeargs(t1.paramtypes.get(j), currStruct.superType, t));
+					t1.paramtypes.set(j, fixTypeargs(t1.paramtypes.get(j), currStruct.superType, superStructure));
 				}
 
 				t1.typeargs = (ArrayList<String>) f.typeargs.clone();
-				t1.typeargs.addAll(0, t.typeargs);
+				t1.typeargs.addAll(0, superStructure.typeargs);
 				t1.template = false; // t.template; TODO struct-templatet
 				t1.typeargsAlreadySet = true;
 
 				t1.genericHandler = new HashSet<>();
 				t1.genericHandler.addAll(f.genericHandler);
 			}
-			methods2.add(t1);
+			newMethods.add(t1);
 		}
-		methods.addAll(0, methods2);
+		methods.addAll(0, newMethods);
 	}
 	
 	private void addSuperMethodsNonVirtual(StructTree currStruct, TypeTree superType, ArrayList<FunctionTree> methods) throws CompilerError {
@@ -1332,6 +1320,75 @@ public class ProceedCompiler {
 		return false;
 	}
 	
+	/* **** KOHDETYYPIT **** */
+	
+	/**
+	 * Lista kaikista käytetyistä tyypeistä, mukaanlukien rajapintojen geneeriset/template tyypit
+	 */
+	//private Set<TypeTree> uniqueTypes = new HashSet<ProceedTree.TypeTree>();
+	private List<TypeTree> uniqueTypes = new ArrayList<>();
+	private boolean uniqueListFreeze = false;
+	
+	private String STABS_structType(TypeTree t, StructTree s) throws CompilerError {
+		
+		currFunc = new FunctionTree();
+		currFunc.typeargs = s.typeargs;
+		currFunc.genericHandler.add("i" + s.name);
+		
+		int size = 0;
+		for (int i = 0; i < s.fields.size(); i++) size += Registers.REGISTER_SIZE;
+		
+		String members = "";
+		for (int i = 0; i < s.fields.size(); i++) {
+			TypeTree type = fixTypeargs(checkTypeargs(s.fields.get(i).type), t, s);
+			if (!uniqueTypes.contains(type)) {
+				uniqueTypes.add(type);
+			}
+			members += demanglef(s.fields.get(i).name) + ":" + "!" + type.toString().replace("@", "") + "?" + "," + i*Registers.REGISTER_SIZE_BIT + "," + Registers.REGISTER_SIZE_BIT + ";";
+		}
+		return "*s" + size + members + ";";
+	}
+	
+	public static org.kaivos.proceedhl.compiler.type.Type typeFromTree(TypeTree t) {
+		switch (t.name) {
+		case INT_TYPE:
+			return new IntegerType(Size.LONG);
+		case FLOAT_TYPE:
+			return new FloatType(FloatType.Size.ARCH);
+		case BOOL_TYPE:
+			return new IntegerType(Size.LONG);
+		case STR_TYPE:
+			return new PointerType(new IntegerType(Size.I8), true);
+		case PTR_TYPE:
+			if (t.subtypes.size() > 0)
+				return new PointerType(typeFromTree(t.subtypes.get(0)));
+			return new PointerType(new VoidType());
+		case LIST_TYPE:
+			return new PointerType(new VoidType());
+		case NULL_TYPE:
+		case UNIT_TYPE:
+			return new IntegerType(Size.I8);
+		case METHOD_TYPE:
+			return new FunctionType(typeFromTree(t.subtypes.get(0)));
+		case FUNC_TYPE:
+		case EXT_FUNC_TYPE:
+			if (t.subtypes.size() > 0)
+				return new FunctionType(typeFromTree(t.subtypes.get(0)), t.subtypes.stream().skip(1).map(t_ -> typeFromTree(t_)).collect(Collectors.toList()));
+		case OBJ_TYPE:
+		default:
+			if (structures.containsKey(t.name))
+				return new ReferenceType(t.name);
+			if (interfaces.containsKey(t.name)) {
+				if (interfaces.get(t.name).data != null)
+					return typeFromTree(interfaces.get(t.name).data);
+			}
+			return new PointerType(new VoidType());
+		}
+	}
+	
+	/* **** FUNKTIOT **** */
+	
+	/** Kääntää funktion */
 	private void compileFunction(FunctionTree tree) throws CompilerError {
 		
 		func = tree.name;
@@ -1412,6 +1469,8 @@ public class ProceedCompiler {
 		out.endfunction();
 	}
 
+	/* **** LAUSEET **** */
+	
 	private String catchLabel = null;
 	
 	private String breakLabel = null;
@@ -1434,311 +1493,31 @@ public class ProceedCompiler {
 			if (t.type == LineTree.Type.EXPRESSION) {
 				compileExpression(t.expr, inTry);
 			} else if (t.type == LineTree.Type.RETURN) {
-				TypeTree a = compileExpression(t.expr, "_RV", changeTemplateTypes(currFunc.returnType, currFunc.templateChanges), inTry);
-				
-				if (a.name.equals(NULL_TYPE)) {
-					warn(W_STRICT, "Return value is null");
-				}
-				
-				if (currFunc.flags.contains("lambda") && changeTemplateTypes(currFunc.returnType, currFunc.templateChanges).name.equals(UNIT_TYPE)) {
-					// TODO hyväksyisi vain tyyppiä # arvo, ei #[return arvo;]
-					// TODO iterator control pitäisi myös hyväksyä... mieti asiaa
-					out.ret("0");
-				}
-				else if (!a.equals(changeTemplateTypes(currFunc.returnType, currFunc.templateChanges)))
-				{
-					if (!doCasts(a, changeTemplateTypes(currFunc.returnType, currFunc.templateChanges), "_RV"))
-						err("Invalid return value: can't cast from " + a + " to " + changeTemplateTypes(currFunc.returnType, currFunc.templateChanges));
-				}
-				out.ret("_RV");
-				out.go("__out_" + func);
+				compileReturn(t, inTry);
 			} else if (t.type == LineTree.Type.THROW) {
-				TypeTree a = compileExpression(t.expr, "_RV", TypeTree.getDefault(EXCEPTION_TYPE), inTry);
-				
-				if (a.name.equals(NULL_TYPE)) {
-					warn(W_CRITICAL, "Exception is null (this may lead to an undefined behaviour)");
-				}
-				
-				if (!doCasts(a, TypeTree.getDefault(EXCEPTION_TYPE), "_RV"))
-					err("Invalid exception value: can't cast from " + a + " to @" + EXCEPTION_TYPE);
-				out.store("obx", "1");		// BX = 1
-				out.store("ocx", "_RV");	// CX = Virhemuuttuja
-				out.go("__out_" + func); 	// Poistu funktiosta
-			} else if (t.type == LineTree.Type.ASSIGN) assign: {
-				
-				//if (vars.get(t.var) != null && t.typedef != null) err("(" + t.var + ") can't declare type twice");
-				
-				TypeTree a = null, b = null;
-				String var = null;
-				
-				if (currFunc.nonlocal != null && vars.get(t.var) == null) {
-					for (int i = 0; i < currFunc.nonlocal.size(); i++) {
-						NonLocal nl = currFunc.nonlocal.get(i);
-						if (nl.name.equals(t.var)) {
-							{
-								warn(W_STRICT, "Modified a non-local variable " + t.var + " which has not been declared. This can lead to an undefined behaviour.");
-							}
-							a = compileExpression(t.expr, var="_NLV", b=nl.type, inTry);
-							if (!doCasts(a, b, var)) err("(" + t.var + ") Invalid assigment: can't cast from " + a + " to " + b);
-							
-							out.call(new PointerType(typeFromTree(b)), "odx", "get", "var@nonlocal", (i*2+2) + "");
-							out.setref("odx", "_NLV");
-							if (allowPrinting) markExterns.add(new TypeName("get", new FunctionType(new PointerType(new VoidType()))));
-							break assign;
-						}
-					}
-				}
-				
-				if (vars.get(t.var) == null) {
-					if (statics.get(t.var) != null) {
-						a = compileExpression(t.expr, var="static@" + t.var, b=statics.get(t.var), inTry);
-					}
-					else if (t.typedef == null && t.vardef) { // var-avainsana
-						a = compileExpression(t.expr, var="var@" + t.var, TypeTree.getDefault(TOP_TYPE), inTry);
-						vars.put(t.var, b=a);
-						out.var(var,  b.toString().replace("@", ""));
-					} else if (t.vardef) { // tyyppi annettu
-						vars.put(t.var, b=changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges));
-						a = compileExpression(t.expr, var="var@" + t.var, vars.get(t.var), inTry);
-						
-						out.var(var,  b.toString().replace("@", ""));
-					} else {
-						err("(" + t.var + ") Invalid assigment: " + t.var + " cannot be resolved");
-					}
-				} else {
-					if (t.typedef != null) {
-						err("(" + t.var + ") Invalid assigment: " + t.var + " is already declared as " + vars.get(t.var));
-					}
-					a = compileExpression(t.expr, var="var@" + t.var, vars.get(t.var), inTry);
-					b = vars.get(t.var);
-				}
-				
-				if (!doCasts(a, b, var)) err("(" + t.var + ") Invalid assigment: can't cast from " + a + " to " + b);
+				compileThrow(t, inTry);
+			} else if (t.type == LineTree.Type.ASSIGN) {
+				compileAssign(t, inTry);
 			} else if (t.type == LineTree.Type.NONLOCAL) {
-				
-				if (currFunc.nonlocal == null) {
-					err("Function " + currFunc.name + " does not have nonlocals!");
-				}
-				for (String s : t.args) {
-					boolean found = false;
-					for (int i = 0; i < currFunc.nonlocal.size(); i++) {
-						NonLocal nl = currFunc.nonlocal.get(i);
-						if (nl.name.equals(s)) {
-							if (vars.get(s) != null) {
-								err("Invalid nonlocal variable: " + s + " is already declared as " + vars.get(s));
-							}
-							vars.put(s, nl.type);
-							out.call(new PointerType(typeFromTree(nl.type)), "odx", "get", "var@nonlocal",  (i*2+2) + "");
-							out.deref(typeFromTree(nl.type), "var@" + s, "odx");
-							if (allowPrinting) markExterns.add(new TypeName("get", new FunctionType(new PointerType(new VoidType()))));
-							found = true;
-							break;
-						}
-					}
-					if (!found) {
-						err("Invalid nonlocal variable: " + s + " not resolved");
-					}
-				}
+				compileNonlocalDeclaration(t);
 			} else if (t.type == LineTree.Type.IF) {
-				TypeTree a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
-				
-				if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
-				
-				out.goif(PILCondition.EQUALS, "_CV", "0", "_if_else"+ ++loopCounter);
-				int counter = loopCounter;
-				
-				compileLine(t.block, inTry);
-				
-				out.go("_if"+counter);
-				
-				out.label("_if_else"+ counter);
-				
-				if (t.elseBlock != null) compileLine(t.elseBlock, inTry);
-				
-				out.label("_if"+counter);
+				compileIf(t, inTry);
 			} else if (t.type == LineTree.Type.WHILE) {
-				if (t.elseBlock == null) {
-					out.label("_while"+ ++loopCounter +"_continue");
-					TypeTree a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
-					
-					if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
-					
-					out.goif(PILCondition.EQUALS, "_CV", "0", "_while"+ loopCounter);
-					int counter = loopCounter;
-					
-					String tmp = breakLabel;
-					breakLabel = "_while"+ counter+"";
-					
-					compileLine(t.block, inTry);
-					
-					breakLabel = tmp;
-					
-					out.go("_while"+ counter+"_continue");
-					out.label("_while"+ counter);
-				}
-				else {
-					TypeTree a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
-					
-					if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
-					
-					out.goif(PILCondition.EQUALS, "_CV", "0", "_while"+ ++loopCounter+"_else");
-					
-					out.label("_while"+ loopCounter +"_continue");
-					
-					
-					int counter = loopCounter;
-					
-					String tmp = breakLabel;
-					breakLabel = "_while"+ counter+"";
-					
-					compileLine(t.block, inTry);
-					
-					breakLabel = tmp;
-					
-					a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
-					
-					if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
-					
-					out.goif(PILCondition.EQUALS, "_CV", "0", "_while"+ counter);
-					out.go("_while"+ counter+"_continue");
-					
-					out.label("_while"+ counter+"_else");
-					
-					compileLine(t.elseBlock, inTry);
-					
-					out.label("_while"+ counter);
-				}
+				compileWhile(t, inTry);
 			} else if (t.type == LineTree.Type.FOR) {
-				
-				compileLine(t.block2, inTry); // Assigment
-				
-				out.label("_for"+ ++loopCounter +"_continue");
-				TypeTree a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
-				
-				if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
-				
-				out.goif(PILCondition.EQUALS, "_CV", "0", "_for"+ loopCounter);
-				int counter = loopCounter;
-				
-				String tmp = breakLabel;
-				breakLabel = "_for"+ counter+"";
-				
-				compileLine(t.block, inTry);
-				
-				compileLine(t.elseBlock, inTry);
-				
-				breakLabel = tmp;
-				
-				out.go("_for"+ counter+"_continue");
-				out.label("_for"+ counter);
+				compileFor(t, inTry);
 			} else if (t.type == LineTree.Type.DO_WHILE) {
-				out.label("_while"+ ++loopCounter +"_continue");
-				
-				int counter = loopCounter;
-				
-				String tmp = breakLabel;
-				breakLabel = "_while"+ counter+"";
-				
-				compileLine(t.block, inTry);
-				
-				breakLabel = tmp;
-				
-				TypeTree a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
-				
-				if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
-				
-				out.goif(PILCondition.INQUALS, "_CV", "0", "_while"+ counter+"_continue");
-				out.label("_while"+ counter);
+				compileDoWhile(t, inTry);
 			} else if (t.type == LineTree.Type.BREAK) {
 				out.go(breakLabel);
 			} else if (t.type == LineTree.Type.TRY_CATCH) {
-				if (inTry) err("Nested trys are illegal!");
-				int counter = ++loopCounter;
-				
-				catchLabel = 	"ex" + counter;
-				
-				compileLine(t.block, true);
-				
-				catchLabel = null;
-				
-				out.go("out_try" + counter);
-				
-				
-				out.label("ex" + counter);
-				
-				if (vars.get(t.var) != null) {
-					err("Invalid catch: variable " + t.var + " is already defined");
-				}
-				
-				vars.put(t.var, TypeTree.getDefault(EXCEPTION_TYPE)); // Virhemuuttuja
-				
-				out.set(typeFromTree(TypeTree.getDefault(EXCEPTION_TYPE)), "var@"+t.var, "0");
-				out.load("var@"+t.var, "ocx"); // Exception-muuttuja on CX:ssä
-				out.store("obx", "0");         // Resetoi BX
-				out.store("ocx", "0");         // Resetoi CX
-				
-				compileLine(t.elseBlock, false); // Catch-osio
-				
-				vars.remove(t.var);
-				
-				out.label("out_try" + counter);
+				compileTryCatch(t, inTry);
 			} else if (t.type == LineTree.Type.BLOCK) {
-				out.startblock();
-				
-				ArrayList<String> variables = new ArrayList<>();
-				for (LineTree t1 : t.lines) {
-					if (t1.type == LineTree.Type.ASSIGN) {
-						if (!vars.containsKey(t1.var)) {
-							variables.add(t1.var);
-						}
-					}
-					compileLine(t1, inTry);
-					emptyLine();
-				}
-				for (String s : variables) {
-					vars.remove(s);
-				}
-				
-				out.endblock();
+				compileBlock(t, inTry);
 			} else if (t.type == LineTree.Type.STATIC_IF) {
-				boolean cond = false;
-				if (t.cond == StaticCondition.EQUALS_TYPE) {
-					cond = changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges)
-							.equals(changeTemplateTypes(checkTypeargs(t.typedef2), currFunc.templateChanges));
-				}
-				else if (t.cond == StaticCondition.CASTABLE) {
-					cond = castable(changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges),
-							changeTemplateTypes(checkTypeargs(t.typedef2), currFunc.templateChanges));
-				}
-				else if (t.cond == StaticCondition.MANUALLY_CASTABLE) {
-					cond = manuallyCastable(changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges),
-							changeTemplateTypes(checkTypeargs(t.typedef2), currFunc.templateChanges));
-				}
-				else if (t.cond == StaticCondition.IS_STRUCT) {
-					cond = structures.containsKey(changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges).name);
-				}
-				else if (t.cond == StaticCondition.IS_CLASS) {
-					TypeTree tt = changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges);
-					cond = structures.containsKey(tt.name) && structures.get(tt.name).isClass;
-				}
-				else if (t.cond == StaticCondition.HAS_ATTRIBUTE) {
-					TypeTree tt = changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges);
-					cond = interfaces.containsKey(tt.name) && (interfaces.get(tt.name).flags1.containsValue(t.flag)
-							|| t.flag.args.size() == 0 && interfaces.get(tt.name).flags.contains(t.flag.name));
-				}
-				
-				if (t.inverseCond) cond = !cond;
-				
-				if (cond)
-					compileLine(t.block, inTry);
-				
-				else if (t.elseBlock != null) compileLine(t.elseBlock, inTry);
+				compileStaticIf(t, inTry);
 			} else if (t.type == LineTree.Type.STATIC_COMMAND) {
-				if (t.command == StaticCommand.ERROR) {
-					err("static __error(" + t.message + ")");
-				} else if (t.command == StaticCommand.WARN) {
-					warn(W_NORMAL, "static __warn(" + t.message + ")");
-				}
+				compileStaticCommand(t);
 			} 
 		} catch (Exception ex) {
 			//System.err.println("; E: " + currModuleFile + ":" + (t.line+1));
@@ -1746,6 +1525,350 @@ public class ProceedCompiler {
 		}
 	}
 
+	/** Kääntää return-lauseen */
+	private void compileReturn(LineTree t, boolean inTry) throws CompilerError {
+		TypeTree a = compileExpression(t.expr, "_RV", changeTemplateTypes(currFunc.returnType, currFunc.templateChanges), inTry);
+		
+		if (a.name.equals(NULL_TYPE)) {
+			warn(W_STRICT, "Return value is null");
+		}
+		
+		if (currFunc.flags.contains("lambda") && changeTemplateTypes(currFunc.returnType, currFunc.templateChanges).name.equals(UNIT_TYPE)) {
+			// TODO hyväksyisi vain tyyppiä # arvo, ei #[return arvo;]
+			// TODO iterator control pitäisi myös hyväksyä... mieti asiaa
+			out.ret("0");
+		}
+		else if (!a.equals(changeTemplateTypes(currFunc.returnType, currFunc.templateChanges)))
+		{
+			if (!doCasts(a, changeTemplateTypes(currFunc.returnType, currFunc.templateChanges), "_RV"))
+				err("Invalid return value: can't cast from " + a + " to " + changeTemplateTypes(currFunc.returnType, currFunc.templateChanges));
+		}
+		out.ret("_RV");
+		out.go("__out_" + func);
+	}
+
+	/** Kääntää throw-lauseen */
+	private void compileThrow(LineTree t, boolean inTry) throws CompilerError {
+		TypeTree a = compileExpression(t.expr, "_RV", TypeTree.getDefault(EXCEPTION_TYPE), inTry);
+		
+		if (a.name.equals(NULL_TYPE)) {
+			warn(W_CRITICAL, "Exception is null (this may lead to an undefined behaviour)");
+		}
+		
+		if (!doCasts(a, TypeTree.getDefault(EXCEPTION_TYPE), "_RV"))
+			err("Invalid exception value: can't cast from " + a + " to @" + EXCEPTION_TYPE);
+		out.store("obx", "1");		// BX = 1
+		out.store("ocx", "_RV");	// CX = Virhemuuttuja
+		out.go("__out_" + func); 	// Poistu funktiosta
+	}
+
+	/** Kääntää muuttujan asettamisen */
+	private void compileAssign(LineTree t, boolean inTry) throws CompilerError {
+		assign: {
+			
+			//if (vars.get(t.var) != null && t.typedef != null) err("(" + t.var + ") can't declare type twice");
+			
+			TypeTree a = null, b = null;
+			String var = null;
+			
+			if (currFunc.nonlocal != null && vars.get(t.var) == null) {
+				for (int i = 0; i < currFunc.nonlocal.size(); i++) {
+					NonLocal nl = currFunc.nonlocal.get(i);
+					if (nl.name.equals(t.var)) {
+						{
+							warn(W_STRICT, "Modified a non-local variable " + t.var + " which has not been declared. This can lead to an undefined behaviour.");
+						}
+						a = compileExpression(t.expr, var="_NLV", b=nl.type, inTry);
+						if (!doCasts(a, b, var)) err("(" + t.var + ") Invalid assigment: can't cast from " + a + " to " + b);
+						
+						out.call(new PointerType(typeFromTree(b)), "odx", "get", "var@nonlocal", (i*2+2) + "");
+						out.setref("odx", "_NLV");
+						if (allowPrinting) markExterns.add(new TypeName("get", new FunctionType(new PointerType(new VoidType()))));
+						break assign;
+					}
+				}
+			}
+			
+			if (vars.get(t.var) == null) {
+				if (statics.get(t.var) != null) {
+					a = compileExpression(t.expr, var="static@" + t.var, b=statics.get(t.var), inTry);
+				}
+				else if (t.typedef == null && t.vardef) { // var-avainsana
+					a = compileExpression(t.expr, var="var@" + t.var, TypeTree.getDefault(TOP_TYPE), inTry);
+					vars.put(t.var, b=a);
+					out.var(var,  b.toString().replace("@", ""));
+				} else if (t.vardef) { // tyyppi annettu
+					vars.put(t.var, b=changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges));
+					a = compileExpression(t.expr, var="var@" + t.var, vars.get(t.var), inTry);
+					
+					out.var(var,  b.toString().replace("@", ""));
+				} else {
+					err("(" + t.var + ") Invalid assigment: " + t.var + " cannot be resolved");
+				}
+			} else {
+				if (t.typedef != null) {
+					err("(" + t.var + ") Invalid assigment: " + t.var + " is already declared as " + vars.get(t.var));
+				}
+				a = compileExpression(t.expr, var="var@" + t.var, vars.get(t.var), inTry);
+				b = vars.get(t.var);
+			}
+			
+			if (!doCasts(a, b, var)) err("(" + t.var + ") Invalid assigment: can't cast from " + a + " to " + b);
+		}
+	}
+
+	/** Kääntää nonlocal-lauseen */
+	private void compileNonlocalDeclaration(LineTree t) throws CompilerError {
+		if (currFunc.nonlocal == null) {
+			err("Function " + currFunc.name + " does not have nonlocals!");
+		}
+		for (String s : t.args) {
+			boolean found = false;
+			for (int i = 0; i < currFunc.nonlocal.size(); i++) {
+				NonLocal nl = currFunc.nonlocal.get(i);
+				if (nl.name.equals(s)) {
+					if (vars.get(s) != null) {
+						err("Invalid nonlocal variable: " + s + " is already declared as " + vars.get(s));
+					}
+					vars.put(s, nl.type);
+					out.call(new PointerType(typeFromTree(nl.type)), "odx", "get", "var@nonlocal",  (i*2+2) + "");
+					out.deref(typeFromTree(nl.type), "var@" + s, "odx");
+					if (allowPrinting) markExterns.add(new TypeName("get", new FunctionType(new PointerType(new VoidType()))));
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				err("Invalid nonlocal variable: " + s + " not resolved");
+			}
+		}
+	}
+
+	/** Kääntää ehtolauseen */
+	private void compileIf(LineTree t, boolean inTry) throws CompilerError {
+		TypeTree a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
+		
+		if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
+		
+		out.goif(PILCondition.EQUALS, "_CV", "0", "_if_else"+ ++loopCounter);
+		int counter = loopCounter;
+		
+		compileLine(t.block, inTry);
+		
+		out.go("_if"+counter);
+		
+		out.label("_if_else"+ counter);
+		
+		if (t.elseBlock != null) compileLine(t.elseBlock, inTry);
+		
+		out.label("_if"+counter);
+	}
+
+	/** Kääntää while-lauseen */
+	private void compileWhile(LineTree t, boolean inTry) throws CompilerError {
+		if (t.elseBlock == null) {
+			out.label("_while"+ ++loopCounter +"_continue");
+			TypeTree a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
+			
+			if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
+			
+			out.goif(PILCondition.EQUALS, "_CV", "0", "_while"+ loopCounter);
+			int counter = loopCounter;
+			
+			String tmp = breakLabel;
+			breakLabel = "_while"+ counter+"";
+			
+			compileLine(t.block, inTry);
+			
+			breakLabel = tmp;
+			
+			out.go("_while"+ counter+"_continue");
+			out.label("_while"+ counter);
+		}
+		else {
+			TypeTree a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
+			
+			if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
+			
+			out.goif(PILCondition.EQUALS, "_CV", "0", "_while"+ ++loopCounter+"_else");
+			
+			out.label("_while"+ loopCounter +"_continue");
+			
+			
+			int counter = loopCounter;
+			
+			String tmp = breakLabel;
+			breakLabel = "_while"+ counter+"";
+			
+			compileLine(t.block, inTry);
+			
+			breakLabel = tmp;
+			
+			a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
+			
+			if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
+			
+			out.goif(PILCondition.EQUALS, "_CV", "0", "_while"+ counter);
+			out.go("_while"+ counter+"_continue");
+			
+			out.label("_while"+ counter+"_else");
+			
+			compileLine(t.elseBlock, inTry);
+			
+			out.label("_while"+ counter);
+		}
+	}
+
+	/** Kääntää for-lauseen */
+	private void compileFor(LineTree t, boolean inTry) throws CompilerError {
+		compileLine(t.block2, inTry); // Assigment
+		
+		out.label("_for"+ ++loopCounter +"_continue");
+		TypeTree a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
+		
+		if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
+		
+		out.goif(PILCondition.EQUALS, "_CV", "0", "_for"+ loopCounter);
+		int counter = loopCounter;
+		
+		String tmp = breakLabel;
+		breakLabel = "_for"+ counter+"";
+		
+		compileLine(t.block, inTry);
+		
+		compileLine(t.elseBlock, inTry);
+		
+		breakLabel = tmp;
+		
+		out.go("_for"+ counter+"_continue");
+		out.label("_for"+ counter);
+	}
+
+	/** Kääntää do-while -lauseen */
+	private void compileDoWhile(LineTree t, boolean inTry) throws CompilerError {
+		out.label("_while"+ ++loopCounter +"_continue");
+		
+		int counter = loopCounter;
+		
+		String tmp = breakLabel;
+		breakLabel = "_while"+ counter+"";
+		
+		compileLine(t.block, inTry);
+		
+		breakLabel = tmp;
+		
+		TypeTree a = compileExpression(t.expr, "_CV", TypeTree.getDefault(BOOL_TYPE), inTry);
+		
+		if (!doCasts(a, TypeTree.getDefault(BOOL_TYPE), "_CV")) err("(" + t.var + ") Invalid condition: can't cast from " + a + " to @" + BOOL_TYPE);
+		
+		out.goif(PILCondition.INQUALS, "_CV", "0", "_while"+ counter+"_continue");
+		out.label("_while"+ counter);
+	}
+
+	/** Kääntää try-catch -lauseen */
+	private void compileTryCatch(LineTree t, boolean inTry)
+			throws CompilerError {
+		if (inTry) err("Nested trys are illegal!");
+		int counter = ++loopCounter;
+		
+		catchLabel = 	"ex" + counter;
+		
+		compileLine(t.block, true);
+		
+		catchLabel = null;
+		
+		out.go("out_try" + counter);
+		
+		
+		out.label("ex" + counter);
+		
+		if (vars.get(t.var) != null) {
+			err("Invalid catch: variable " + t.var + " is already defined");
+		}
+		
+		vars.put(t.var, TypeTree.getDefault(EXCEPTION_TYPE)); // Virhemuuttuja
+		
+		out.set(typeFromTree(TypeTree.getDefault(EXCEPTION_TYPE)), "var@"+t.var, "0");
+		out.load("var@"+t.var, "ocx"); // Exception-muuttuja on CX:ssä
+		out.store("obx", "0");         // Resetoi BX
+		out.store("ocx", "0");         // Resetoi CX
+		
+		compileLine(t.elseBlock, false); // Catch-osio
+		
+		vars.remove(t.var);
+		
+		out.label("out_try" + counter);
+	}
+
+	/** Kääntää lohkon */
+	private void compileBlock(LineTree t, boolean inTry) throws CompilerError {
+		out.startblock();
+		
+		ArrayList<String> variables = new ArrayList<>();
+		for (LineTree t1 : t.lines) {
+			if (t1.type == LineTree.Type.ASSIGN) {
+				if (!vars.containsKey(t1.var)) {
+					variables.add(t1.var);
+				}
+			}
+			compileLine(t1, inTry);
+			emptyLine();
+		}
+		for (String s : variables) {
+			vars.remove(s);
+		}
+		
+		out.endblock();
+	}
+
+	/** Kääntää staattisen ehtolauseen */
+	private void compileStaticIf(LineTree t, boolean inTry)
+			throws CompilerError {
+		boolean cond = false;
+		if (t.cond == StaticCondition.EQUALS_TYPE) {
+			cond = changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges)
+					.equals(changeTemplateTypes(checkTypeargs(t.typedef2), currFunc.templateChanges));
+		}
+		else if (t.cond == StaticCondition.CASTABLE) {
+			cond = castable(changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges),
+					changeTemplateTypes(checkTypeargs(t.typedef2), currFunc.templateChanges));
+		}
+		else if (t.cond == StaticCondition.MANUALLY_CASTABLE) {
+			cond = manuallyCastable(changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges),
+					changeTemplateTypes(checkTypeargs(t.typedef2), currFunc.templateChanges));
+		}
+		else if (t.cond == StaticCondition.IS_STRUCT) {
+			cond = structures.containsKey(changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges).name);
+		}
+		else if (t.cond == StaticCondition.IS_CLASS) {
+			TypeTree tt = changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges);
+			cond = structures.containsKey(tt.name) && structures.get(tt.name).isClass;
+		}
+		else if (t.cond == StaticCondition.HAS_ATTRIBUTE) {
+			TypeTree tt = changeTemplateTypes(checkTypeargs(t.typedef), currFunc.templateChanges);
+			cond = interfaces.containsKey(tt.name) && (interfaces.get(tt.name).flags1.containsValue(t.flag)
+					|| t.flag.args.size() == 0 && interfaces.get(tt.name).flags.contains(t.flag.name));
+		}
+		
+		if (t.inverseCond) cond = !cond;
+		
+		if (cond)
+			compileLine(t.block, inTry);
+		
+		else if (t.elseBlock != null) compileLine(t.elseBlock, inTry);
+	}
+
+	/** Kääntää staattisen komennon */
+	private void compileStaticCommand(LineTree t) throws CompilerError {
+		if (t.command == StaticCommand.ERROR) {
+			err("static __error(" + t.message + ")");
+		} else if (t.command == StaticCommand.WARN) {
+			warn(W_NORMAL, "static __warn(" + t.message + ")");
+		}
+	}
+
+	/* ***** VAROITUKSET JA VIRHEET ***** */
+	
 	public static boolean warnErr = false;
 	
 	public static final int W_CRITICAL = 0;
@@ -1808,6 +1931,8 @@ public class ProceedCompiler {
 		
 		ProceedParser.errors++;
 	}
+	
+	/* **** TYYPPIARGUMENTIT **** */
 	
 	/**
 	 * <p>Tarkistaa, onko tyyppi olemassa ja onko tyypillä oikea määrä tyyppiargumentteja</p>
@@ -1872,6 +1997,8 @@ public class ProceedCompiler {
 		
 	}
 
+	/* **** VAKIOT **** */
+	
 	public String getConstant(String str1) {
 		if (!consts.containsKey(str1)) {
 		
@@ -1884,6 +2011,8 @@ public class ProceedCompiler {
 			return "_c@" + consts.get(str1);
 		}
 	}
+	
+	/* **** ULOSTULO **** */
 	
 	private boolean allowPrinting = true;
 	
@@ -1899,6 +2028,8 @@ public class ProceedCompiler {
 	private void emptyLine() {
 		if (allowPrinting && out != null) out.println("");
 	}
+	
+	/* **** LAUSEKKEET **** */
 	
 	class TypeValue {
 		String value;
@@ -1960,7 +2091,7 @@ public class ProceedCompiler {
 		}
 	}
 	
-	/** arvaa tyyppiargumentit funktion argumenttien perusteella "type inference" 
+	/** Arvaa tyyppiargumentit funktion argumenttien perusteella "type inference" 
 	 * 
 	 * @param signature funktion signatuuri
 	 * @param expectedType funktion odotettu signatuuri ~ argumenttien tyypit
@@ -2114,7 +2245,23 @@ public class ProceedCompiler {
 			
 			return new TypeValue(name, TypeTree.getDefault(FUNC_TYPE, subtypes
 					.toArray(new TypeTree[subtypes.size()])).setBonus(bonus));
-		} else if (Arrays.asList("==", "!=", "!", "<", ">", "<=", ">=", "+", "-", "*", "/", "%", "and", "or", "xor", "__at1__", "__at2__").contains(ident)) {
+		} else if (Arrays.asList(
+				"==", "__eq__",
+				"!=", "__neq__",
+				"!", "__not__",
+				"<", "__lt__",
+				">", "__leq__",
+				"<=", "__gt__",
+				">=", "__geq__",
+				"+", "__add__",
+				"-", "__sub__",
+				"*", "__mul__",
+				"/", "__div__",
+				"%", "__mod__",
+				"and", "__and__",
+				"or", "__or__",
+				"xor", "__xor__",
+				"__at1__", "__at2__").contains(ident)) {
 			final TypeTree btt = TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, TOP_TYPE, TOP_TYPE);
 			final TypeTree bb = TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, BOOL_TYPE);
 			final TypeTree bbb = TypeTree.getDefault(FUNC_TYPE, BOOL_TYPE, BOOL_TYPE, BOOL_TYPE);
@@ -3062,6 +3209,8 @@ public class ProceedCompiler {
 		}
 	}
 
+	/* **** TYYPPIARGUMENTIT **** */
+	
 	/**
 	 * Muuntaa tyyppiparametrin tyyppiargumenttien mukaisiksi tyypeiksi
 	 * 
@@ -3132,6 +3281,8 @@ public class ProceedCompiler {
 		}
 		return newType;
 	}
+	
+	/* **** TYYPPIMUUNNOKSET **** */
 	
 	private String findCast(TypeTree t1, TypeTree t2, String level) throws CompilerError {
 		String fname = null;
