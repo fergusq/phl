@@ -172,7 +172,7 @@ public class ProceedTree extends ParserTree {
 					structs.add(t);
 					_structs.put(t.name, t);
 					accept(";", s);
-				} */else if (seek(s).equals("struct") || seek(s).equals("class")) {
+				} */else if (/*seek(s).equals("struct") ||*/ seek(s).equals("class")) {
 					StructTree t = new StructTree();
 					t.module = module;
 					t.parse(s);
